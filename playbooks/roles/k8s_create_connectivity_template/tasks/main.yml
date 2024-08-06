@@ -1,0 +1,421 @@
+---
+- block: 
+    - name: Get the name of the pod
+      set_fact:
+        pod_name: "{{ event.resource.metadata.name }}"
+
+    - name: Get the name of the namespace
+      set_fact:
+        namespace: "{{ event.resource.metadata.namespace }}"
+
+    - name: Wait for the pod to be Running 
+      k8s_info:
+        api_version: v1
+        kind: Pod
+        namespace: "{{ namespace }}"
+        name: "{{ pod_name }}"
+        label_selectors:
+          - type=eda
+        wait: yes
+        wait_timeout: 300
+      register: pod_info
+
+    - name: If pod is not running end the play
+      meta: end_play
+      when: pod_info.resources[0].status.phase != "Running"
+
+    - name: Get the annotations of the pod
+      set_fact:
+        pod_annotations: "{{ pod_info.resources[0].metadata.annotations }}"
+
+    - name: Extract network names from network-status annotation
+      set_fact:
+        network_names: >-
+          {{
+            pod_annotations['k8s.v1.cni.cncf.io/network-status'] | from_json | json_query("[].name")
+          }}
+
+    - name: Debug network names
+      debug:
+        msg: "Network names: {{ network_names }}"
+
+    - name: Extract PCI address for each network (excluding ovn-kubernetes)
+      set_fact:
+        pci_addresses: >-
+          {{
+            pod_annotations['k8s.v1.cni.cncf.io/network-status'] | from_json | selectattr('name', 'ne', 'ovn-kubernetes') | selectattr('device-info.type', 'eq', 'pci') | map(attribute='device-info.pci.pci-address') | list
+          }}
+
+    - name: Debug PCI addresses
+      debug:
+        msg: "PCI addresses: {{ pci_addresses }}"
+
+    - name: Extract node name from pod spec
+      set_fact:
+        node_name: "{{ pod_info.resources[0].spec.nodeName }}"
+
+    - name: Debug node name
+      debug:
+        msg: "Node name: {{ node_name }}"
+
+    - name: Get SriovNetworkNodeState for the node
+      k8s_info:
+        api_version: sriovnetwork.openshift.io/v1
+        kind: SriovNetworkNodeState
+        name: "{{ node_name }}"
+        namespace: openshift-sriov-network-operator
+      register: sriov_node_state
+
+    - name: Initialize physical interfaces list
+      set_fact:
+        physical_interfaces: []
+
+    - name: Extract physical interface for each PCI address
+      set_fact:
+        interfaces: "{{ sriov_node_state.resources[0].status.interfaces }}"
+
+    - name: Get list of all PCI addresses
+      set_fact:
+        all_pci_addresses: >-
+          {{
+            interfaces | map(attribute='Vfs') | map('map', attribute='pciAddress') | flatten
+          }}
+
+    - name: Debug all PCI addresses
+      debug:
+        msg: "All PCI addresses: {{ all_pci_addresses }}"
+
+    - name: Initialize the PCI to name map
+      set_fact:
+        pci_to_name_map: {}
+
+    - name: Populate the PCI to name map with interface names
+      set_fact:
+        pci_to_name_map: "{{ pci_to_name_map | combine({ item.pciAddress: item.name }) }}"
+      loop: "{{ interfaces }}"
+      loop_control:
+        loop_var: item
+
+    - name: Gather all VFs into a single list with their parent interface names
+      set_fact:
+        all_vfs: "{{ all_vfs | default([]) + vfs_with_interface }}"
+      loop: "{{ interfaces }}"
+      loop_control:
+        loop_var: interface
+      vars:
+        vfs_with_interface: "{{ interface.Vfs | map('combine', {'interface_name': interface.name}) | list }}"
+
+    - name: Populate the PCI to name map with VF names
+      set_fact:
+        pci_to_name_map: "{{ pci_to_name_map | combine({ vf.pciAddress: vf.interface_name }) }}"
+      loop: "{{ all_vfs }}"
+      loop_control:
+        loop_var: vf
+
+    - name: Display the PCI address to interface name map
+      debug:
+        var: pci_to_name_map
+
+    - name: Get one value
+      set_fact:
+        vf_pci: "{{ item | extract(pci_to_name_map) }}"
+      with_items: "{{ pci_addresses }}"
+
+
+    - name: Get NodeNetworkState for the node
+      k8s_info:
+        api_version: nmstate.io/v1beta1
+        kind: NodeNetworkState
+        name: "{{ node_name }}"
+      register: node_network_state
+
+    - name: Get the remote interface in json
+      set_fact:
+        remote_interface_json: "{{ node_network_state.resources[0].status.currentState.interfaces | selectattr('name', 'eq', item | extract(pci_to_name_map)) | list }}"
+      with_items: "{{ pci_addresses }}"
+
+    - name: Get remote interface name
+      set_fact:
+        remote_interface_name: "{{ remote_interface_json[0].lldp.neighbors }}"
+
+    - name: Initialize node to port-id map
+      set_fact:
+        node_to_portid_map: {}
+
+    - name: Debug node network state
+      debug:
+        var: node_network_state.resources[0].status.currentState.interfaces
+
+    - name: Populate the node to port-id map
+      set_fact:
+        node_to_portid_map: "{{ node_to_portid_map | combine({ item.name: port_id }) }}"
+      loop: "{{ node_network_state.resources[0].status.currentState.interfaces }}"
+      loop_control:
+        loop_var: item
+      vars:
+        port_id: >-
+          {{
+            (item.lldp.neighbors[0] | selectattr('port-id', 'defined') | map(attribute='port-id') | first | default(''))
+            if item.lldp is defined and item.lldp.enabled and item.lldp.neighbors | length > 0 else ''
+          }}
+
+    - name: Display the node to port-id map
+      debug:
+        msg: "Node to Port-ID Map: {{ node_to_portid_map }}"
+
+    - name: Find all the name of nodes for the pci addresses and corresponding port-id
+      set_fact:
+        node_portid: "{{ pci_addresses | map('extract', pci_to_name_map) | map('extract', node_to_portid_map) | list }}"
+
+    - name: Debug node network state
+      debug:
+        var: node_portid
+
+    - name: Initialize application points
+      set_fact:
+        application_points: []
+
+    - name: Generate application points
+      set_fact:
+        application_points: "{{ application_points + [{'if_name': item, 'used': true}] }}"
+      loop: "{{ node_portid }}"
+      when: item != ''
+
+    - name: Display application points
+      set_fact:
+        application_points: "{{ application_points }}"
+
+    - name: Connect to Apstra
+      junipernetworks.apstra.authenticate:
+        verify_certificates: false
+        logout: false
+      register: auth
+    
+    - name: Extract virtual network label value
+      set_fact:
+        vnet_label_value: "{{ (annotations['apstra.juniper.net/ep'] | regex_search('\"vnetName\": \"([^\"]+)\"', '\\1') | first) | string }}"
+
+    - name: Extract namespace of the net-attach-def
+      set_fact:
+        net_attach_def_namespace: "{{ (annotations['k8s.v1.cni.cncf.io/networks'] | regex_search('\"namespace\": \"([^\"]+)\"', '\\1') | first) | string }}"
+
+    - name: Extract name of the net-attach-def
+      set_fact:
+        net_attach_def_name: "{{ (annotations['k8s.v1.cni.cncf.io/networks'] | regex_search('\"name\": \"([^\"]+)\"', '\\1') | first) | string }}"
+
+    - name: Get the net-attach-def info
+      kubernetes.core.k8s_info:
+        api_version: k8s.cni.cncf.io/v1
+        kind: NetworkAttachmentDefinition
+        name: "{{ net_attach_def_name }}"
+        namespace: "{{ net_attach_def_namespace }}"
+      register: net_attach_def_info
+
+    - name: Extract vlan id from net-attach-def
+      set_fact:
+        vlan_id: "{{ (net_attach_def_info.resources[0].spec.config | regex_search('\"vlan\": ([0-9]+)', '\\1') | first | default('')) }}"
+
+    - name: Print vlan id
+      debug:
+        msg: "VLAN ID: {{ vlan_id }}" 
+
+#### Get the bluprint from POD namesapce and project annotations
+
+    - name: Get the bluprint name from pod namespace annotations
+      k8s_info: 
+        api_version: v1
+        kind: Namespace
+        name: "{{ namespace }}"
+      register: podnamespace_info
+      
+    - name: Get the annotations of the namespace
+      set_fact:
+        pod_annotations: "{{ podnamespace_info.resources[0].metadata.annotations }}"
+
+    - name: Extract network names from apstra.juniper.net annotation
+      set_fact:
+        blueprint_name: >-
+          {{
+            (pod_annotations['apstra.juniper.net/vrf'] | from_json | json_query("[].blueprintName") | first) | string
+          }}
+      register: bp
+      
+    - name: Get blueprint
+      junipernetworks.apstra.blueprint:
+        body:
+          label: "{{ blueprint_name }}"
+        auth_token: "{{ auth.token }}"
+        lock_state: "ignore"
+      register: bp
+
+    - name: Extract tags from the annotations if present
+      set_fact:
+        sz_tags: "{{ (annotations['apstra.juniper.net/ep'] | regex_search('\"tags\": \"([^\"]+)\"', '\\1') | first) | string }}"
+      when: annotations['apstra.juniper.net/ep'] is defined and 'tags' in annotations['apstra.juniper.net/ep']
+
+    - name: Set sz_tags to None if tags are not present
+      set_fact:
+        sz_tags: ["source=eda", "cluster_name=ocpapstra-lab.englab.juniper.net","vlan_id={{ vlan_id }}"]
+      when: annotations['apstra.juniper.net/ep'] is not defined or 'tags' not in annotations['apstra.juniper.net/ep']
+
+    - name: Create tags if sz_tags is defined and is a list
+      junipernetworks.apstra.tag:
+        id: "{{ bp.id }}"
+        body:
+          label: "{{ tag }}"
+          description: "test tag description"
+        auth_token: "{{ auth.token }}"
+      when: sz_tags is defined and sz_tags | length > 0
+      loop: "{{ sz_tags }}"
+      loop_control:
+        loop_var: tag
+
+    - name: Update an endpoint policy application point
+      junipernetworks.apstra.endpoint_policy:
+        id: "{{ bp.id }}"
+        virtual_network_label: "{{ vnet_label_value }}"
+        tags: "{{ sz_tags if sz_tags is not none else omit }}"
+        body:
+          application_points: "{{ application_points }}"
+        state: present
+      register: ep_update
+
+## Update configmap with port and pods values
+
+    - name: Fetch ConfigMap
+      kubernetes.core.k8s_info:
+        kind: ConfigMap
+        name: "{{ vnet_label_value }}"
+        namespace: juniper-apstra-eda
+      register: mycm
+
+    - name: Print if name from application_points
+      set_fact:
+        if_node_name: "{{ item.if_name | regex_replace('/', '_') | regex_replace('-', '_') | regex_replace(':', '_') }}-{{ node_name }}"
+      with_items: "{{ application_points }}"
+
+    - name: Initilize the configmaop port-node is not present
+      set_fact:
+        existing_data: "{{ mycm.resources[0].data[if_node_name] }}"
+      when: "if_node_name in mycm.resources[0].data"
+
+    - name: Check and add pod to ConfigMap
+      set_fact:
+        updated_data: >-
+          {{
+            mycm.resources[0].data |combine({
+              (if_node_name): (
+                mycm.resources[0].data[if_node_name] | regex_replace("'", '"') | from_yaml + [pod_name]
+              ) | unique | to_nice_json
+            })
+          }}
+      when: (if_node_name) in mycm.resources[0].data and (pod_name) not in (mycm.resources[0].data[if_node_name] | regex_replace("'", '"') | from_yaml)
+
+    - name: Add "{{ if_node_name }}" if not present
+      set_fact:
+        updated_data: "{{ mycm.resources[0].data | combine({if_node_name: [pod_name] | to_json}) }}"
+      when: "if_node_name not in mycm.resources[0].data"
+
+    - name: Update ConfigMap
+      kubernetes.core.k8s:
+        namespace: juniper-apstra-eda
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: "{{ vnet_label_value }}"
+          data: "{{ updated_data }}"
+        merge_type: merge
+        server_side_apply:
+          field_manager: ansible
+        state: patched
+      when: updated_data is defined
+      
+  rescue:
+    - name: Unlock the  blueprint as task has failed
+      junipernetworks.apstra.blueprint:
+        id: "{{ bp.id }}"
+        lock_state: "unlocked"
+        state: committed
+        auth_token: "{{ auth.token }}"
+      register: blueprint_unlock
+
+    - name: Update deployment if ownerReferences defined
+      k8s:
+        state: patched
+        definition:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: "{{ event.resource.metadata.ownerReferences[0].name | regex_replace('-(?:[^-]+)$', '') }}"
+            namespace: "{{ event.resource.metadata.namespace }}"
+            labels:
+              apstraStatus: "failed"
+      when: event.resource.metadata.ownerReferences is defined and event.resource.metadata.ownerReferences | length > 0
+
+    - name: Update the label of Pod as failed
+      k8s:
+        state: patched
+        definition:
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: "{{ event.resource.metadata.name }}"
+            namespace: "{{ event.resource.metadata.namespace }}"
+            labels:
+              apstraStatus: "failed"
+
+    - name: Remove the label of Pod as failed
+      k8s:
+        state: patched
+        definition:
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: "{{ event.resource.metadata.name }}"
+            namespace: "{{ event.resource.metadata.namespace }}"
+            labels:
+              type: NULL
+
+  always:
+    - name: Unlock the  blueprint 
+      junipernetworks.apstra.blueprint:
+        id: "{{ bp.id }}"
+        lock_state: "unlocked"
+        state: committed
+        auth_token: "{{ auth.token }}"
+      register: blueprint_unlock
+
+    - name: Commit the blueprint
+      junipernetworks.apstra.blueprint:
+        id: "{{ bp.id }}"
+        lock_state: "ignore"
+        state: committed
+        auth_token: "{{ auth.token }}"
+      register: blueprint_commit
+
+    - name: Update deployment if ownerReferences defined on success
+      k8s:
+        state: patched
+        definition:
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: "{{ event.resource.metadata.ownerReferences[0].name | regex_replace('-(?:[^-]+)$', '') }}"
+            namespace: "{{ event.resource.metadata.namespace }}"
+            labels:
+              apstraStatus: "Success"
+      when: event.resource.metadata.ownerReferences is defined and event.resource.metadata.ownerReferences | length > 0 and not ep_update.failed
+
+    - name: Update the label of Pod as Success
+      k8s:
+        state: patched
+        definition:
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: "{{ event.resource.metadata.name }}"
+            namespace: "{{ event.resource.metadata.namespace }}"
+            labels:
+              apstraStatus: "Success"
+      when: not ep_update.failed

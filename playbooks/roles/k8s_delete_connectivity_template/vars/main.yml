@@ -1,0 +1,5 @@
+# roles/delete_pod/vars/main.yml
+---
+namespace: "{{ ns }}"
+annotations: "{{ annotate }}"
+event: "{{ ev }}"

@@ -1,0 +1,21 @@
+# roles/pod_create/meta/main.yml
+---
+galaxy_info:
+  author: 
+   - pratikd@juniper.net
+   - ejacques@juniper.net
+  description: Create connectivity template in Apstra
+  company: Juniper Networks
+  license: license (Apache-2.0)
+  min_ansible_version: 2.9
+  platforms:
+    - name: Apstra
+      versions:
+        - 5.0
+    - OpenShift: 4.17
+  categories:
+    - cloud
+    - apstra
+    - eda
+
+dependencies: []

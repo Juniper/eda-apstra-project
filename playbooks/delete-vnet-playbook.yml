@@ -1,0 +1,11 @@
+# delete-vnet-playbook.yml
+---
+- name: Delete virtual network in Apstra
+  hosts: localhost
+  gather_facts: false
+  roles:
+    - role: lock_blueprint
+    - role: k8s_delete_virtual_network
+    - role: unlock_blueprint
+
+    

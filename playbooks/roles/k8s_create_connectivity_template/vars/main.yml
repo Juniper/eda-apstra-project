@@ -1,0 +1,5 @@
+# roles/pod_create/vars/main.yml
+---
+namespace: "{{ ns }}"
+annotations: "{{ annotate }}"
+event: "{{ ev }}"

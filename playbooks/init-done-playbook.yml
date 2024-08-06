@@ -1,0 +1,67 @@
+---
+- name: Check for Init done events
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Extract individual resources from ev
+      set_fact:
+        individual_resources: "{{ init_ev.resources['items'] }}"
+
+    - name: Debug - Show all resources
+      debug:
+        var: individual_resources
+
+    - name: Filter resources where metadata label type is 'eda'
+      set_fact:
+        filtered_resources_without_ev: "{{ individual_resources | selectattr('metadata.labels', 'defined') | selectattr('metadata.labels.type', 'defined') | selectattr('metadata.labels.type', 'eq', 'eda') | list }}"
+
+    - name: Initialize restructured_resources
+      set_fact:
+        restructured_resources: []
+
+    - name: Restructure each resource with event.resource hierarchy
+      set_fact:
+        restructured_resources: "{{ restructured_resources + [{'event': {'resource': item}}] }}"
+      loop: "{{ filtered_resources_without_ev }}"
+      loop_control:
+        loop_var: item
+
+    - name: Call k8s_create_virtual_network role for SR-IOV networks
+      include_role:
+        name: k8s_create_virtual_network
+      vars:
+        ns: "{{ item.event.resource.metadata.name }}"
+        annotate: "{{ item.event.resource.metadata.annotations }}"
+        ev: "{{ item.event }}"
+      loop: "{{ restructured_resources }}"
+      loop_control:
+        loop_var: item
+      when: item.event.resource.kind == 'SriovNetwork'
+
+
+    - name: Call k8s_create_security_zone role for SR-IOV networks
+      include_role:
+        name: k8s_create_security_zone
+      vars:
+        ns: "{{ item.event.resource.metadata.name }}"
+        annotate: "{{ item.event.resource.metadata.annotations }}"
+        ev: "{{ item.event }}"
+      loop: "{{ restructured_resources }}"
+      loop_control:
+        loop_var: item
+      when: item.event.resource.kind == 'Namespace'
+
+
+    - name: Call k8s_create_connectivity_template role for SR-IOV networks
+      include_role:
+        name: k8s_create_connectivity_template
+      vars:
+        ns: "{{ item.event.resource.metadata.name }}"
+        annotate: "{{ item.event.resource.metadata.annotations }}"
+        ev: "{{ item.event }}"
+      loop: "{{ restructured_resources }}"
+      loop_control:
+        loop_var: item
+      when: item.event.resource.kind == 'Pod'
+
+

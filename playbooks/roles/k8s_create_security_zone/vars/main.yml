@@ -1,0 +1,5 @@
+# roles/create_sz/vars/main.yml
+---
+namespace: "{{ ns }}"
+annotations: "{{ annotate }}"
+event: "{{ ev }}"

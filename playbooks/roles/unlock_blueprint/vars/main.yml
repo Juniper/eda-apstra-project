@@ -1,0 +1,5 @@
+# roles/unlock_blueprint/vars/main.yml
+---
+namespace: "{{ ns }}"
+annotations: "{{ annotate }}"
+event: "{{ ev }}"

@@ -1,0 +1,347 @@
+---
+- name: Extract blueprint with default and convert to string
+  set_fact:
+    bluprint_label_value: "{{ (annotations['apstra.juniper.net/vnet'] | regex_search('\"blueprintName\": \"([^\"]+)\"', '\\1') | first) | string }}"
+
+- name: Connect to Apstra
+  junipernetworks.apstra.authenticate:
+    verify_certificates: false
+    logout: false
+  register: auth
+
+- name: Get blueprint
+  junipernetworks.apstra.blueprint:
+    body:
+      label: "{{ bluprint_label_value }}"
+    auth_token: "{{ auth.token }}"
+    lock_state: "ignore"
+  register: bp
+
+- name: print event.metadata.deletionTimestamp
+  debug:
+    msg: "{{ event.resource.metadata.deletionTimestamp }}"
+  when:  event.resource.metadata.deletionTimestamp is defined
+
+- name: Check if deletionTimestamp is defined
+  ansible.builtin.set_fact:
+    deletion_timestamp: "{{ event.resource.metadata.deletionTimestamp | default(None) }}"
+
+- name: Unlock the blueprint
+  junipernetworks.apstra.blueprint:
+    id: "{{ bp.id }}"
+    lock_state: "unlocked"
+    state: committed
+    auth_token: "{{ auth.token }}"
+  register: blueprint_unlock
+  when: deletion_timestamp != ""
+
+- name: Commit the blueprint
+  junipernetworks.apstra.blueprint:
+    id: "{{ bp.id }}"
+    lock_state: "ignore"
+    state: committed
+    auth_token: "{{ auth.token }}"
+  register: blueprint_commit
+  when: deletion_timestamp != ""
+
+- name: Exit if deletionTimestamp is defined
+  ansible.builtin.meta: end_play
+  when: deletion_timestamp != ""
+  vars:
+    msg: "Deletion timestamp found: {{ deletion_timestamp }}"
+
+- name: Display deletion timestamp
+  ansible.builtin.debug:
+    msg: "Deletion timestamp found: {{ deletion_timestamp }}"
+  when: deletion_timestamp is not none
+
+- name: Fix escaped quotes and add missing commas for any number of parameters
+  ansible.builtin.set_fact:
+    vnet_cleaned_string: "{{ annotations['apstra.juniper.net/vnet'] | regex_replace('\\\\\"', '\"') }}"
+
+- name: Add missing commas between key-value pairs
+  ansible.builtin.set_fact:
+    vnet_clean_str: "{{ vnet_cleaned_string | regex_replace('\"([a-zA-Z_0-9]+)\": \"([^\"]+)\" \"([a-zA-Z_0-9]+)\":', '\"\\1\": \"\\2\", \"\\3\":') }}"
+
+- name: Convert cleaned VRF string to JSON
+  ansible.builtin.set_fact:
+    vnet_data: "{{ vnet_clean_str[0] }}"
+
+- name: Extract blueprint with default and convert to string
+  set_fact:
+    bluprint_label_value: "{{ (annotations['apstra.juniper.net/vnet'] | regex_search('\"blueprintName\": \"([^\"]+)\"', '\\1') | first) | string }}"
+
+- name: Extract blueprint with default and convert to string
+  set_fact:
+    vnet_label_value: "{{ (annotations['apstra.juniper.net/vnet'] | regex_search('\"vnetName\": \"([^\"]+)\"', '\\1') | first) | string }}"
+
+- name: Extract security zone with default and convert to string
+  set_fact:
+    sz_label_value: "{{ (annotations['apstra.juniper.net/vnet'] | regex_search('\"vrfName\": \"([^\"]+)\"', '\\1') | first) | string }}"
+
+
+- name: Connect to Apstra
+  junipernetworks.apstra.authenticate:
+    verify_certificates: false
+    logout: false
+  register: auth
+
+- block:
+    - name: Get blueprint
+      junipernetworks.apstra.blueprint:
+        body:
+          label: "{{ bluprint_label_value }}"
+        auth_token: "{{ auth.token }}"
+        lock_state: "ignore"
+      register: bp
+
+    - name: Run apstra_facts module
+      junipernetworks.apstra.apstra_facts:
+        gather_network_facts:
+        - 'blueprints.nodes'
+        available_network_facts: true
+      register: apstra_facts
+    
+    - name: Get security_zone by label
+      junipernetworks.apstra.security_zone:
+        id: "{{ bp.id }}"
+        body:
+          label: "{{ sz_label_value }}"
+          vrf_name: "{{ sz_label_value }}"
+        auth_token: "{{ auth.token }}"
+      register: sz
+
+    - name: set blueprint ID fact
+      ansible.builtin.set_fact:
+        blueprint_id: "{{ bp.id.blueprint }}"
+
+    - name: Extract list of node ids
+      ansible.builtin.set_fact:
+        node_ids: "{{ ansible_facts.apstra_facts.blueprints[blueprint_id].nodes | dict2items | json_query('[?value.role==`leaf`].key') }}"
+    
+    - name: Create svi_ips structure
+      ansible.builtin.set_fact:
+        svi_ips: >-
+          {{
+            node_ids | map('community.general.dict_kv', 'system_id') | map('combine', {
+              'ipv4_mode': 'enabled',
+              'ipv4_addr': None,
+              'ipv6_mode': 'disabled',
+              'ipv6_addr': None
+            }) | list
+          }}
+    
+    - name: Create bound_to structure
+      ansible.builtin.set_fact:
+        bound_to: >-
+          {{
+            node_ids | map('community.general.dict_kv', 'system_id') | map('combine', {
+              'access_switch_node_ids': []
+            }) | list
+          }}
+
+    - name: Form the body combining security_zone_id, svi_ips, and bound_to, and conditionally including create_policy_tagged and reserved_vlan_id
+      ansible.builtin.set_fact:
+        vnet_data_with_szid: >-
+          {{
+            vnet_data
+            | combine({'security_zone_id': sz.id.security_zone})
+            | combine({'create_policy_tagged': (event.resource.spec.vlan is defined | ternary(true, false))})
+            | combine({'reserved_vlan_id': (event.resource.spec.vlan if event.resource.spec.vlan is defined else omit)})
+            | combine({'svi_ips': svi_ips})
+            | combine({'bound_to': bound_to})
+          }}
+  
+    - name: Initialize empty dictionary for filtered data
+      ansible.builtin.set_fact:
+        vnet_data_filtered: {}
+
+    - name: Filter out security_zone and blueprint from vnet_data_with_szid
+      ansible.builtin.set_fact:
+        vnet_data_filtered: "{{ vnet_data_filtered | combine({item.key: item.value}) }}"
+      when: item.key not in ['vrfName', 'blueprintName']
+      with_dict: "{{ vnet_data_with_szid }}"
+
+    - name: Print event
+      ansible.builtin.debug:
+        msg: "{{ event.resource.spec.ipam | to_yaml }}"
+
+    - name: Prepare ipam for JSON parsing
+      set_fact:
+        ipam_json_string: "{{ event.resource.spec.ipam | to_json }}"
+
+    - name: Extract ipam values
+      ansible.builtin.set_fact:
+        ipam_data: "{{ ipam_json_string | from_json }}"
+
+    - name: Override ipv4_subnet and virtual_gateway_ipv4
+      ansible.builtin.set_fact:
+        vnet_data_filtered: >-
+          {{
+            vnet_data_filtered
+            | combine({'ipv4_subnet': ipam_data.subnet})
+            | combine({'virtual_gateway_ipv4': ipam_data.gateway})
+            | combine({'label': vnet_label_value})
+          }}
+
+    - name: Print vnet data before final 
+      ansible.builtin.debug:
+        msg: vnet_data_filtered
+
+    - name: Ensure ipv4_enabled and virtual_gateway_ipv4_enabled are set to true if not present
+      ansible.builtin.set_fact:
+        vnet_data_filtered: >-
+          {{
+            vnet_data_filtered
+            | combine({'ipv4_enabled': (vnet_data_filtered.ipv4_enabled | default(true))})
+            | combine({'virtual_gateway_ipv4_enabled': (vnet_data_filtered.virtual_gateway_ipv4_enabled | default(true))})
+            | combine({'vn_type': (vnet_data_filtered.vn_type | default("vxlan"))})
+          }}
+
+    - name: Debug vnet_data_with_szid
+      debug:
+        var: vnet_data_filtered
+
+    - name: Extract tags from the annotations if present
+      set_fact:
+        sz_tags: "{{ (annotations['apstra.juniper.net/vnet'] | regex_search('\"tags\": \"([^\"]+)\"', '\\1') | first) | string }}"
+      when: annotations['apstra.juniper.net/vnet'] is defined and 'tags' in annotations['apstra.juniper.net/vnet']
+
+    - name: Set sz_tags to None if tags are not present
+      set_fact:
+        sz_tags: ["k8s_nad={{ event.resource.metadata.name }}", "source=eda", "cluster_name=ocpapstra-lab.englab.juniper.net"]
+      when: annotations['apstra.juniper.net/vnet'] is not defined or 'tags' not in annotations['apstra.juniper.net/vnet']
+
+    - name: Create tags if sz_tags is defined and is a list
+      junipernetworks.apstra.tag:
+        id: "{{ bp.id }}"
+        body:
+          label: "{{ tag }}"
+          description: "test tag description"
+        auth_token: "{{ auth.token }}"
+      when: sz_tags is defined and sz_tags | length > 0
+      loop: "{{ sz_tags }}"
+      loop_control:
+        loop_var: tag
+
+    - name: Create virtual_network
+      junipernetworks.apstra.virtual_network:
+        id: "{{ bp.id }}"
+        body: "{{ vnet_data_filtered }}"
+        auth_token: "{{ auth.token }}"
+        tags: "{{ sz_tags if sz_tags is not none else omit }}"
+      register: vn
+      retries: 5
+      delay: 10
+      until: vn.failed == false
+  
+    - name: Get the resource_groups
+      junipernetworks.apstra.apstra_facts:
+        id: "{{ bp.id }}"
+        auth_token: "{{ auth.token }}"
+        gather_network_facts:
+          - blueprints.resource_groups
+          - ip_pools
+
+    - name: Extract list of ip_pool ids
+      ansible.builtin.set_fact:
+        ip_pools: "{{ ansible_facts.apstra_facts.ip_pools | json_query('keys(@)') }}"
+
+    - name: Show ip_pool_ids
+      ansible.builtin.debug:
+        var: ip_pools
+
+    - name: Update resource_group
+      junipernetworks.apstra.resource_group:
+        id:
+          blueprint: "{{ bp.id.blueprint }}"
+          group_type: "ip"
+          group_name: "sz:{{ sz.security_zone.id }},leaf_loopback_ips"
+        body:
+          description: "Updated description"
+          pool_ids: "{{ ip_pools }}"
+      register: rg_update
+
+    - name: Create NS for the configmap
+      kubernetes.core.k8s:
+        name: juniper-apstra-eda
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    - name: Create configmap using server side apply
+      kubernetes.core.k8s:
+        namespace: juniper-apstra-eda
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: "{{ vnet_label_value }}"
+          data: 
+            port-nodeName: "list of Pods"
+        apply: yes
+        server_side_apply:
+          field_manager: ansible
+
+  rescue:        
+    - name: Unlock the bluprint as task is failed
+      junipernetworks.apstra.blueprint:
+        id: "{{ bp.id }}"
+        lock_state: "unlocked"
+        state: committed
+        auth_token: "{{ auth.token }}"
+      register: blueprint_unlock
+
+    - name: Update the label of SriovNetwork as failed
+      k8s:
+        state: patched
+        definition:
+          apiVersion: v1
+          kind: SriovNetwork
+          metadata:
+            name: "{{ event.resource.metadata.name }}"
+            namespace: "{{ event.resource.metadata.namespace }}"
+            labels:
+              apstraStatus: "failed"
+
+    - name: remove the label of SriovNetwork as failed
+      k8s:
+        state: patched
+        definition:
+          apiVersion: v1
+          kind: SriovNetwork
+          metadata:
+            name: "{{ event.resource.metadata.name }}"
+            namespace: "{{ event.resource.metadata.namespace }}"
+            labels:
+              type: NULL
+  
+  always:
+    - name: Unlock the  blueprint
+      junipernetworks.apstra.blueprint:
+        id: "{{ bp.id }}"
+        lock_state: "unlocked"
+        state: committed
+        auth_token: "{{ auth.token }}"
+      register: blueprint_unlock
+
+    - name: Commit the blueprint
+      junipernetworks.apstra.blueprint:
+        id: "{{ bp.id }}"
+        lock_state: "ignore"
+        state: committed
+        auth_token: "{{ auth.token }}"
+      register: blueprint_commit
+
+    - name: Update the label of SriovNetwork as Success
+      k8s:
+        state: patched
+        definition:
+          apiVersion: v1
+          kind: SriovNetwork
+          metadata:
+            name: "{{ event.resource.metadata.name }}"
+            namespace: "{{ event.resource.metadata.namespace }}"
+            labels:
+              apstraStatus: "Success"
+      when: not vn.failed

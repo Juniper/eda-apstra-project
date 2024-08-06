@@ -1,0 +1,110 @@
+---
+- name: Listen for newly created Namespace
+  hosts: all
+  sources:
+    - junipernetworks.eda.k8s:
+        kinds:
+          - api_version: v1
+            kind: Namespace
+          - api_version: sriovnetwork.openshift.io/v1
+            kind: SriovNetwork
+            ignore_modified_deleted: True
+            changed_fields:
+              - spec.vlan
+          - api_version: v1
+            kind: Pod
+            label_selectors: ["type=eda"]
+  rules:       
+    - name: Multi event for ns add
+      condition: event.type == "ADDED" and event.resource.metadata.labels.type == eda and event.resource.kind == Namespace
+      action:
+        run_job_template:
+          name: apstra-bp.yml
+          organization: Default
+          job_args:
+            extra_vars: 
+              ns: "{{ event.resource.metadata.name }}"
+              annotate: "{{ event.resource.metadata.annotations }}"
+              ev: "{{ event }}"
+
+    - name: Multi event for sriovnet add
+      condition: event.type == "ADDED" and event.resource.metadata.labels.type == eda and event.resource.kind == SriovNetwork
+      action:
+        run_job_template:
+          name: create-vnet.yml
+          organization: Default
+          job_args:
+            extra_vars: 
+              ns: "{{ event.resource.metadata.name }}"
+              annotate: "{{ event.resource.metadata.annotations }}"
+              ev: "{{ event }}"
+
+    - name: Multi event for Pod add
+      condition: event.type == "ADDED" and event.resource.metadata.labels.type == eda and event.resource.kind == Pod
+      action:
+        run_job_template:
+          name: pod-create.yml
+          organization: Default
+          job_args:
+            extra_vars: 
+              ns: "{{ event.resource.metadata.name }}"
+              annotate: "{{ event.resource.metadata.annotations }}"
+              ev: "{{ event }}"
+
+    - name: Trigger action on Namespace deletion with specific annotation
+      condition: event.type == "DELETED" and event.resource.metadata.labels.type == eda and event.resource.kind == Namespace
+      action:
+        run_job_template:
+          name: delete-vrf.yml
+          organization: Default
+          job_args:
+            extra_vars: 
+              ns: "{{ event.resource.metadata.name }}"
+              annotate: "{{ event.resource.metadata.annotations }}"
+              ev: "{{ event }}"
+
+    - name: Trigger action on SriovNetwork deletion with specific annotation
+      condition: event.type == "DELETED" and event.resource.metadata.labels.type == eda and event.resource.kind == SriovNetwork
+      action:
+        run_job_template:
+          name: delete-vnet.yml
+          organization: Default
+          job_args:
+            extra_vars: 
+              ns: "{{ event.resource.metadata.name }}"
+              annotate: "{{ event.resource.metadata.annotations }}"
+              ev: "{{ event }}"
+
+    - name: Trigger action on PoD Deletion 
+      condition: event.type == "DELETED" and event.resource.metadata.labels.type == eda and event.resource.kind == Pod
+      action:
+        run_job_template:
+          name: delete-pod.yml
+          organization: Default
+          job_args:
+            extra_vars: 
+              ns: "{{ event.resource.metadata.name }}"
+              annotate: "{{ event.resource.metadata.annotations }}"
+              ev: "{{ event }}"
+
+    - name: Trigger action on  SriovNetwork update with specific annotation
+      condition: event.type == "MODIFIED" and event.resource.metadata.labels.type == eda and event.resource.kind == SriovNetwork
+      action:
+        run_job_template:
+          name: create-vnet.yml
+          organization: Default
+          job_args:
+            extra_vars: 
+              ns: "{{ event.resource.metadata.name }}"
+              annotate: "{{ event.resource.metadata.annotations }}"
+              ev: "{{ event }}" 
+
+    - name: INIT_DONE event
+      condition: event.type == "INIT_DONE"
+      action:
+        run_job_template:
+          name: init-done.yml
+          organization: Default
+          job_args:
+            extra_vars: 
+              init_ev: "{{ event }}"

@@ -1,0 +1,129 @@
+# roles/delete_vnet/tasks/main.yml
+---
+- name: Extract blueprint with default and convert to string
+  set_fact:
+    bluprint_label_value: "{{ (annotations['apstra.juniper.net/vnet'] | regex_search('\"blueprintName\": \"([^\"]+)\"', '\\1') | first) | string }}"
+
+- name: Connect to Apstra
+  junipernetworks.apstra.authenticate:
+    verify_certificates: false
+    logout: false
+  register: auth
+  
+- name: Get blueprint
+  junipernetworks.apstra.blueprint:
+    body:
+      label: "{{ bluprint_label_value }}"
+    auth_token: "{{ auth.token }}"
+    lock_state: "ignore"
+  register: bp
+
+- name: Print event.metadata.deletionTimestamp
+  debug:
+    msg: "{{ event.resource.metadata.deletionTimestamp }}"
+  when: event.resource.metadata.deletionTimestamp is defined
+
+- name: Check if deletionTimestamp is defined
+  ansible.builtin.set_fact:
+    deletion_timestamp: "{{ event.resource.metadata.deletionTimestamp | default(None) }}"
+
+- name: Unlock the blueprint
+  junipernetworks.apstra.blueprint:
+    id: "{{ bp.id }}"
+    lock_state: "unlocked"
+    state: committed
+    auth_token: "{{ auth.token }}"
+  register: blueprint_unlock
+  when: deletion_timestamp == ""
+
+- name: Commit the blueprint
+  junipernetworks.apstra.blueprint:
+    id: "{{ bp.id }}"
+    lock_state: "ignore"
+    state: committed
+    auth_token: "{{ auth.token }}"
+  register: blueprint_commit
+  when: deletion_timestamp == ""
+
+- name: Exit if deletionTimestamp is not defined
+  ansible.builtin.meta: end_play
+  when: deletion_timestamp == ""
+  vars:
+    msg: "Deletion timestamp not found: {{ deletion_timestamp }}"
+
+- name: Connect to Apstra
+  junipernetworks.apstra.authenticate:
+    verify_certificates: false
+    logout: false
+  register: auth
+
+- block:
+    - name: Extract blueprint with default and convert to string
+      set_fact:
+        bluprint_label_value: "{{ (annotations['apstra.juniper.net/vnet'] | regex_search('\"blueprintName\": \"([^\"]+)\"', '\\1') | first) | string }}"
+    
+    - name: Extract virtual network label value
+      set_fact:
+        vnet_label_value: "{{ (annotations['apstra.juniper.net/vnet'] | regex_search('\"vnetName\": \"([^\"]+)\"', '\\1') | first) | string }}"
+
+    - name: Get blueprint
+      junipernetworks.apstra.blueprint:
+        body:
+          label: "{{ bluprint_label_value }}"
+        auth_token: "{{ auth.token }}"
+        lock_state: "ignore"
+      register: bp
+
+    - name: Get the virtual_network
+      junipernetworks.apstra.virtual_network:
+        id: "{{ bp.id }}"
+        body:
+          label: "{{ vnet_label_value }}"
+        auth_token: "{{ auth.token }}"
+      register: vn
+
+    - name: Display vn
+      debug:
+        msg: "{{ vn }}"
+        
+    - name: Delete the virtual_network
+      junipernetworks.apstra.virtual_network:
+        id: "{{ vn.id }}" 
+        state: absent
+        auth_token: "{{ auth.token }}"
+      register: vn_delete
+
+    - name: Delete configmap if exists
+      kubernetes.core.k8s:
+        state: absent
+        api_version: v1
+        kind: configmap
+        namespace: juniper-apstra-eda
+        name: "{{ vnet_label_value }}"
+      register: configmap_delete
+
+  rescue:
+    - name: Unlock the blueprint if task fails
+      junipernetworks.apstra.blueprint:
+        id: "{{ bp.id }}"
+        lock_state: "unlocked"
+        state: committed
+        auth_token: "{{ auth.token }}"
+      register: blueprint_unlock 
+
+  always:
+    - name: Unlock the blueprint
+      junipernetworks.apstra.blueprint:
+        id: "{{ bp.id }}"
+        lock_state: "unlocked"
+        state: committed
+        auth_token: "{{ auth.token }}"
+      register: blueprint_unlock
+
+    - name: Commit the blueprint
+      junipernetworks.apstra.blueprint:
+        id: "{{ bp.id }}"
+        lock_state: "ignore"
+        state: committed
+        auth_token: "{{ auth.token }}"
+      register: blueprint_commit
