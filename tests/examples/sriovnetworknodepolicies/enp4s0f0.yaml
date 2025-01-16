@@ -1,0 +1,19 @@
+apiVersion: sriovnetwork.openshift.io/v1
+kind: SriovNetworkNodePolicy
+metadata:
+  labels:
+    cluster: rhocpdemo
+  name: enp4s0f0-vfs
+  namespace: openshift-sriov-network-operator
+spec:
+  deviceType: netdevice
+  isRdma: false
+  needVhostNet: true
+  nicSelector:
+    pfNames:
+    - enp4s0f0
+  nodeSelector:
+    feature.node.kubernetes.io/network-sriov.capable: "true"
+  numVfs: 4
+  priority: 99
+  resourceName: enp4s0f0_vfs
