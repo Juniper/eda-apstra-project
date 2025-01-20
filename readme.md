@@ -15,6 +15,8 @@ This project leverages **OpenShift 4.7** and **Red Hat Ansible Automation Platfo
 Useful documentation:
 - [Automation Decisions](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/using_automation_decisions/index)
 - [Automation Execution Configuration](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/configuring_automation_execution/index)
+- [Installing NMState Operator] (https://docs.openshift.com/container-platform/4.10/networking/k8s_nmstate/k8s-nmstate-about-the-k8s-nmstate-operator.html)
+- [Installing SR-IOV Network Opeator] ()
 
 ---
 
@@ -32,7 +34,66 @@ Credentials are essential for accessing external systems and running automation 
    - **Inputs**: Provide the required inputs based on the credential type.
 5. Save the credential.
 
-### 2. Creating a Project from a Public Repository
+We need to create below credetials for automation jobs.
+1. OpenShift or Kubernetes API Bearer Token
+2. Juniper Apstra 
+
+#### 1. OpenShift or Kubernetes API Bearer Token
+Selecting this credential type allows you to create instance groups that point to a Kubernetes or OpenShift container.
+Get more information how to create OpenShift API Bearer token type of credentials [here](https://docs.ansible.com/automation-controller/4.1.2/html/userguide/credentials.html#openshift-or-kubernetes-api-bearer-token)
+
+This will be used to get access to OpenShift cluster from automation jobs using service account.
+
+#### 2. Juniper Apstra Credential Type
+We need to create credentials type for Apstra.
+
+1. Navigate to Creadentials Types.
+2. Create Credential Types.
+3. Name Credential Type as Juniper Apstra.
+4. Put below in Input configuration.
+```yaml
+fields:
+  - id: api_url
+    type: string
+    label: API URL
+    help_text: The URL used to access the Apstra API
+  - id: verify_certificates
+    type: boolean
+    label: Verify Certificates
+    default: true
+    help_text: Whether to verify SSL certificates
+  - id: username
+    type: string
+    label: Username
+    help_text: The username for authentication
+  - id: password
+    type: string
+    label: Password
+    secret: true
+    help_text: The password for authentication
+required:
+  - api_url
+  - username
+  - password
+```
+5. Add below in Injector configuration.
+```yaml
+env:
+  APSTRA_API_URL: '{{ api_url }}'
+  APSTRA_PASSWORD: '{{ password }}'
+  APSTRA_USERNAME: '{{ username }}'
+  APSTRA_VERIFY_CERTIFICATES: '{{ verify_certificates }}'
+file: {}
+extra_vars: {}
+```
+6. Save the credentials type.
+
+Next step is to create credential of type Juniper Apstra following the steps mentioned in  [Creating Credentials](#1-creating-credentials)
+
+### 2. Setting up inventories.
+In this case, inventory should have jobs running on controlplane nodes in instance group. We can select controlplane nodes in Demo Inventory.
+
+### 3. Creating a Project from a Public Repository
 A project is a logical collection of playbooks, inventories, and configurations.
 
 1. Navigate to **Projects** in the Automation Controller.
@@ -45,7 +106,7 @@ A project is a logical collection of playbooks, inventories, and configurations.
    - **Credentials**: (Optional) Select credentials if the repository requires authentication.
 4. Save the project and allow the sync process to complete.
 
-### 3. Creating Templates
+### 4. Creating Templates
 Templates define jobs and workflows for automation execution.
 
 1. Navigate to **Templates** in the Automation Controller.
@@ -58,7 +119,16 @@ Templates define jobs and workflows for automation execution.
    - **Credentials**: Assign the required credentials.
 4. Save the job template.
 
-### 4. Using Automation Decisions
+We need to templates for each type of action.
+1. Create NameSpace
+2. Delete NameSpace
+3. Create SRIOVNetwork
+4. Delete SRIOVNetwork
+6. Create POD
+7. Delete POD
+8. Init-done
+
+### 5. Using Automation Decisions
 Automation Decisions help define and execute rule-based workflows.
 
 1. Navigate to **Automation Decisions**.
@@ -103,4 +173,4 @@ This project is licensed under the MIT License. See `LICENSE` for more details.
 ---
 
 ## Contact
-For questions or issues, please reach out to [Your Name] at [pratikd@juniper.net].
+For questions or issues, please reach out to [Pratik Dave] at [pratikd@juniper.net].
