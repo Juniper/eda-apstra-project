@@ -139,7 +139,7 @@ Automation Decisions help define and execute rule-based workflows.
 
 For detailed guidance, refer to the [Using Automation Decisions Documentation](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/using_automation_decisions/index).
 
-### 5. Creating Rulebook Activations
+### 6. Creating Rulebook Activations
 Rulebook activations are used to trigger specific rule-based workflows.
 
 1. Navigate to **Rulebook Activations**.
@@ -151,6 +151,14 @@ Rulebook activations are used to trigger specific rule-based workflows.
    - **Execution Environment**: Select the execution environment.
    - **Variables**: Provide any required input variables.
 4. Save and activate the rulebook.
+
+### 7. Applying SriovNetworkNodePolicy
+You specify the SR-IOV network device configuration for a node by creating an SR-IOV network node policy. The API object for the policy is part of the sriovnetwork.openshift.io API group.
+
+Find example files [here](./tests/examples/sriovnetworknodepolicies/)
+
+Please refer explanation of each field [here](https://docs.openshift.com/container-platform/4.11/networking/hardware_networks/configuring-sriov-device.html)
+
 
 ---
 
