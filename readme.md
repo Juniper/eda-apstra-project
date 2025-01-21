@@ -59,16 +59,15 @@ Credentials are essential for accessing external systems and running automation 
 5. Save the credential.
 
 We need to create below credetials for automation jobs.
-1. OpenShift or Kubernetes API Bearer Token
-2. Juniper Apstra 
+##### 1. OpenShift or Kubernetes API Bearer Token
 
-#### 3. OpenShift or Kubernetes API Bearer Token
 Selecting this credential type allows you to create instance groups that point to a Kubernetes or OpenShift container.
 Get more information how to create OpenShift API Bearer token type of credentials [here](https://docs.ansible.com/automation-controller/4.1.2/html/userguide/credentials.html#openshift-or-kubernetes-api-bearer-token)
 
 This will be used to get access to OpenShift cluster from automation jobs using service account.
 
-#### 4. Juniper Apstra Credential Type
+##### 2. Juniper Apstra Credentials
+
 We need to create credentials type for Apstra.
 
 1. Navigate to Creadentials Types.
@@ -154,7 +153,7 @@ We need to templates for each type of action. Please refer the images for creati
 
 ### Configuring Automation Decision 
 
-#### 1. Using Automation Decisions
+#### 1. Creating Decision Environment
 Automation Decisions help define and execute rule-based workflows.This is similar to creating execution environment mentioned in [Creating Execution Environments](#1-creating-execution-environments)
 
 Please refer [guide](./eda-decision-environment/README.md) to create container image and deploy decision environment. Once container image is create follow the steps below to create decision environment.
@@ -169,7 +168,27 @@ This is sample decision environment creation [image](./tests/images/de-example.p
 
 For detailed guidance, refer to the [Using Automation Decisions Documentation](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/using_automation_decisions/index).
 
-### 2. Creating Rulebook Activations
+#### 2. Creating a Project
+
+This step is similar to [Creating a Project from a Public Repository](#6-creating-a-project-from-a-public-repository)
+
+#### 3. Creating Credentials
+
+Below are the types of credentials that we create in Automation Decesions.
+
+1. Red Hat Ansible Automation Platform
+We need to get access to Ansible Execution to run jobs in Execution environment.
+
+1. Navigate to Users, select the user and go to tokens.
+2. Create token and save the token.
+3. Navigate to Automation Decisions.
+4. Go to Infrastructure and click on Credentials.
+5. Create credentials type  Red Hat Ansible Automation Platform.
+6. Paste the token and Red Hat Ansible Automation Platform URL.
+
+Example credential can be reffered [here](./tests/images/tower-token.png).
+
+#### 4. Creating Rulebook Activations
 Rulebook activations are used to trigger specific rule-based workflows.
 
 1. Navigate to **Rulebook Activations**.
@@ -182,6 +201,8 @@ Rulebook activations are used to trigger specific rule-based workflows.
    - **Variables**: Provide any required input variables.
 4. Save and activate the rulebook.
 
+Example of Rulebook Activation can be reffered [here](./tests/images/rulebook-activation.png)
+
 ## Configuring SRIOV nodes
 
 ### 1. Applying SriovNetworkNodePolicy
@@ -193,14 +214,36 @@ Please refer explanation of each field [here](https://docs.openshift.com/contain
 
 ---
 
-## Verification and Testing
-1. Run automation jobs using the configured templates to ensure proper execution.
-2. Validate the decision workflows and rulebook activations through logs and dashboards in the Automation Controller.
-3. Troubleshoot any issues using the detailed execution logs available under each resource.
+## Mappings of OpenShift Objects with Apstra Objects
+
+This section highlight what you can expect while creating various OpenShift Objects.
+
+| OpenShift Object | Apstra Object | Description |
+|---|---|---|
+| Project | Routing Zones(VRF) | Creating/Deleting Project will create Routing Zones(VRF) in Apstra. |
+| SriovNetwork | Virtual Networks(VNET) | Creating/Deleting SriovNetwork will create Virtual Networks(VNET) in Apstra. |
+| Pod | Connectivity Template | Creation of VNET creates connectivity template automatically in Apstra, Pod will be mapped to respective node and port in connectivity templates dynamically. | 
+
 
 ---
 
+## Verification and Testing
+1. Validate the decision/execution workflows and rulebook activations through logs and dashboards in the Automation Controller and Automation Decision.
+2. Validate projects gets synced properly.
+
+Once above validation is done, we can run sample yamls from [folder](./tests/) and validate.
+
+1. First we create Routing Zones, for that we create project in OpenShift. Check file [project.yaml](./tests/examples/project.yaml)
+2. You can verify automation job starts and the Routing Zone created in Apstra.
+3. Once project is created, we can create SRIOVNetwork. Check file [sriov-vn1.yaml](./tests/examples/sriov-vn1.yaml)
+4. You can verify automation job starts and the Virtual Network created in Apstra.
+5. Once Virtual Network is created , you can see connectivity templates get created.
+6. Now, you can run SRIOV workloads(Pod/Deployment) on this Virtual Network. Refer file [deployment-vn1.yaml](./tests/examples/deployment-vn1.yaml)
+7. You can verify automation job starts and node port is mapped in connectivity template.
+---
+
 ## Troubleshooting
+1. 
 
 
 ## Additional Resources
