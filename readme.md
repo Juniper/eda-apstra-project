@@ -6,23 +6,45 @@
 This project leverages **OpenShift 4.7** and **Red Hat Ansible Automation Platform 2.5** to automate workflows, streamline decision-making, and activate rulebooks. This document explains installation and use of Ansible Automation Platform with  Automation Decisions, Automation Execution Below is a step-by-step guide to setting up the environment and utilizing the platform's features effectively.
 
 ## Prerequisites
-1. **OpenShift 4.7** environment set up and configured.
+1. **OpenShift 4.17** environment set up and configured.
 2. **Ansible Automation Platform 2.5** operator installed and configured.
 3. **Kubernetes NMState** operator installed.
 4. **OpenShift SR-IOV Network** operator installed.
-5. Access to Juniper public Git repository containing the automation project files.
+5. Juniepr Apstra 5.0 or 5.1
+6. Access to Juniper public Git repository containing the automation project files.
 
 Useful documentation:
 - [Automation Decisions](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/using_automation_decisions/index)
 - [Automation Execution Configuration](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/configuring_automation_execution/index)
-- [Installing NMState Operator] (https://docs.openshift.com/container-platform/4.10/networking/k8s_nmstate/k8s-nmstate-about-the-k8s-nmstate-operator.html)
-- [Installing SR-IOV Network Opeator] ()
+- [Installing NMState Operator](https://docs.openshift.com/container-platform/4.10/networking/k8s_nmstate/k8s-nmstate-about-the-k8s-nmstate-operator.html)
+- [Installing SR-IOV Network Opeator](https://docs.openshift.com/container-platform/4.8/networking/hardware_networks/installing-sriov-operator.html#install-operator-web-console_installing-sriov-operator)
 
 ---
 
 ## Steps to Configure and Use Ansible Automation Platform
 
-### 1. Creating Credentials
+This project uses Automation Decisions and Automation Execusion for getting events and running ansible jobs respectively. This document describes how to configure both the tools for Juniper Apstra Event Driven Automation.
+
+### Configuring Automation Execustion
+
+#### 1. Creating Execution Environments
+
+You can run Ansible automation in containers, like any other modern software application. Ansible uses container images known as Execution Environments (EE) that act as control nodes. 
+
+To create Execution Envrionments container image follow the instructions from [here](./tower-execution-environment/README.md)
+
+Once container image is created and pushed to artifactory or similar location which is accessible by Ansible Automation Platform, follow below steps to create Execution Environment.
+
+1. Naviagte to **Automation Controller**.
+2. Go to Infrastructure.
+3. Click on Execution Environments.
+4. Click on Create Execution Environment.
+5. Mention the Name, Image(created in step above), Pull Option, Organization(remains same for all the components)
+6. Click on Create Execution Environment.
+
+Once Execution Environment is created, mention the name of the Execution Environment while creating templates.
+
+#### 2. Creating Credentials
 Credentials are essential for accessing external systems and running automation jobs. Follow these steps:
 
 1. Navigate to **Automation Controller**.
@@ -38,13 +60,13 @@ We need to create below credetials for automation jobs.
 1. OpenShift or Kubernetes API Bearer Token
 2. Juniper Apstra 
 
-#### 1. OpenShift or Kubernetes API Bearer Token
+#### 3. OpenShift or Kubernetes API Bearer Token
 Selecting this credential type allows you to create instance groups that point to a Kubernetes or OpenShift container.
 Get more information how to create OpenShift API Bearer token type of credentials [here](https://docs.ansible.com/automation-controller/4.1.2/html/userguide/credentials.html#openshift-or-kubernetes-api-bearer-token)
 
 This will be used to get access to OpenShift cluster from automation jobs using service account.
 
-#### 2. Juniper Apstra Credential Type
+#### 4. Juniper Apstra Credential Type
 We need to create credentials type for Apstra.
 
 1. Navigate to Creadentials Types.
@@ -90,10 +112,10 @@ extra_vars: {}
 
 Next step is to create credential of type Juniper Apstra following the steps mentioned in  [Creating Credentials](#1-creating-credentials)
 
-### 2. Setting up inventories.
+#### 5. Setting up inventories.
 In this case, inventory should have jobs running on controlplane nodes in instance group. We can select controlplane nodes in Demo Inventory.
 
-### 3. Creating a Project from a Public Repository
+#### 6. Creating a Project from a Public Repository
 A project is a logical collection of playbooks, inventories, and configurations.
 
 1. Navigate to **Projects** in the Automation Controller.
@@ -106,7 +128,7 @@ A project is a logical collection of playbooks, inventories, and configurations.
    - **Credentials**: (Optional) Select credentials if the repository requires authentication.
 4. Save the project and allow the sync process to complete.
 
-### 4. Creating Templates
+#### 7. Creating Templates
 Templates define jobs and workflows for automation execution.
 
 1. Navigate to **Templates** in the Automation Controller.
@@ -128,7 +150,9 @@ We need to templates for each type of action.
 7. Delete POD
 8. Init-done
 
-### 5. Using Automation Decisions
+### Configuring Automation Decision 
+
+#### 1. Using Automation Decisions
 Automation Decisions help define and execute rule-based workflows.
 
 1. Navigate to **Automation Decisions**.
@@ -139,7 +163,7 @@ Automation Decisions help define and execute rule-based workflows.
 
 For detailed guidance, refer to the [Using Automation Decisions Documentation](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/using_automation_decisions/index).
 
-### 6. Creating Rulebook Activations
+### 2. Creating Rulebook Activations
 Rulebook activations are used to trigger specific rule-based workflows.
 
 1. Navigate to **Rulebook Activations**.
@@ -152,7 +176,9 @@ Rulebook activations are used to trigger specific rule-based workflows.
    - **Variables**: Provide any required input variables.
 4. Save and activate the rulebook.
 
-### 7. Applying SriovNetworkNodePolicy
+## Configuring SRIOV nodes
+
+### 1. Applying SriovNetworkNodePolicy
 You specify the SR-IOV network device configuration for a node by creating an SR-IOV network node policy. The API object for the policy is part of the sriovnetwork.openshift.io API group.
 
 Find example files [here](./tests/examples/sriovnetworknodepolicies/)
@@ -168,6 +194,9 @@ Please refer explanation of each field [here](https://docs.openshift.com/contain
 3. Troubleshoot any issues using the detailed execution logs available under each resource.
 
 ---
+
+## Troubleshooting
+
 
 ## Additional Resources
 - [Red Hat Ansible Automation Platform Documentation](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/)
