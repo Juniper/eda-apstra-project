@@ -3,7 +3,7 @@
 # Juniper Apstra Event Drive Automation
 
 ## Overview
-This project leverages **OpenShift 4.7** and **Red Hat Ansible Automation Platform 2.5** to automate workflows, streamline decision-making, and activate rulebooks. This document explains installation and use of Ansible Automation Platform with  Automation Decisions, Automation Execution Below is a step-by-step guide to setting up the environment and utilizing the platform's features effectively.
+This project leverages **OpenShift 4.17** and **Red Hat Ansible Automation Platform 2.5** to automate workflows, streamline decision-making, and activate rulebooks. This document explains installation and use of Ansible Automation Platform with  Automation Decisions, Automation Execution Below is a step-by-step guide to setting up the environment and utilizing the platform's features effectively.
 
 ## Prerequisites
 1. **OpenShift 4.17** environment set up and configured.
@@ -42,7 +42,9 @@ Once container image is created and pushed to artifactory or similar location wh
 5. Mention the Name, Image(created in step above), Pull Option, Organization(remains same for all the components)
 6. Click on Create Execution Environment.
 
+Check the sample configuration of tower [here](./tests/images/tower-ee-example.png)
 Once Execution Environment is created, mention the name of the Execution Environment while creating templates.
+
 
 #### 2. Creating Credentials
 Credentials are essential for accessing external systems and running automation jobs. Follow these steps:
@@ -141,25 +143,29 @@ Templates define jobs and workflows for automation execution.
    - **Credentials**: Assign the required credentials.
 4. Save the job template.
 
-We need to templates for each type of action.
-1. Create NameSpace
-2. Delete NameSpace
-3. Create SRIOVNetwork
-4. Delete SRIOVNetwork
-6. Create POD
-7. Delete POD
-8. Init-done
+We need to templates for each type of action. Please refer the images for creating these templates.
+1. [Create Security Zone](./tests/images/create-security-zone.png)
+2. [Delete Security Zone](./tests/images/delete-security-zone.png)
+3. [Create Virtual Network](./tests/images/create-virtual-network.png)
+4. [Delete Virtual Network](./tests/images/delete-virtual-network.png)
+6. [Create Connectivity Template](./tests/images/create-connectivity-template.png)
+7. [Delete Connectivity Template](./tests/images/delete-connectivity-template.png)
+8. [Init-done](./tests/images/init-done.png)
 
 ### Configuring Automation Decision 
 
 #### 1. Using Automation Decisions
-Automation Decisions help define and execute rule-based workflows.
+Automation Decisions help define and execute rule-based workflows.This is similar to creating execution environment mentioned in [Creating Execution Environments](#1-creating-execution-environments)
+
+Please refer [guide](./eda-decision-environment/README.md) to create container image and deploy decision environment. Once container image is create follow the steps below to create decision environment.
 
 1. Navigate to **Automation Decisions**.
 2. Click **Add Decision Environment** to set up the environment:
    - Configure inputs, such as decision tables, and link them to automation templates.
    - Specify the rule sets and rulebooks to be activated.
 3. Deploy the decision environment.
+
+This is sample decision environment creation [image](./tests/images/de-example.png).
 
 For detailed guidance, refer to the [Using Automation Decisions Documentation](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/using_automation_decisions/index).
 
@@ -184,7 +190,6 @@ You specify the SR-IOV network device configuration for a node by creating an SR
 Find example files [here](./tests/examples/sriovnetworknodepolicies/)
 
 Please refer explanation of each field [here](https://docs.openshift.com/container-platform/4.11/networking/hardware_networks/configuring-sriov-device.html)
-
 
 ---
 
