@@ -340,19 +340,6 @@
         auth_token: "{{ auth.token }}"
       register: blueprint_unlock
 
-    - name: Update deployment if ownerReferences defined
-      k8s:
-        state: patched
-        definition:
-          apiVersion: apps/v1
-          kind: Deployment
-          metadata:
-            name: "{{ event.resource.metadata.ownerReferences[0].name | regex_replace('-(?:[^-]+)$', '') }}"
-            namespace: "{{ event.resource.metadata.namespace }}"
-            labels:
-              apstraStatus: "failed"
-      when: event.resource.metadata.ownerReferences is defined and event.resource.metadata.ownerReferences | length > 0
-
     - name: Update the label of Pod as failed
       k8s:
         state: patched
@@ -393,19 +380,6 @@
         state: committed
         auth_token: "{{ auth.token }}"
       register: blueprint_commit
-
-    - name: Update deployment if ownerReferences defined on success
-      k8s:
-        state: patched
-        definition:
-          apiVersion: apps/v1
-          kind: Deployment
-          metadata:
-            name: "{{ event.resource.metadata.ownerReferences[0].name | regex_replace('-(?:[^-]+)$', '') }}"
-            namespace: "{{ event.resource.metadata.namespace }}"
-            labels:
-              apstraStatus: "Success"
-      when: event.resource.metadata.ownerReferences is defined and event.resource.metadata.ownerReferences | length > 0 and not ep_update.failed
 
     - name: Update the label of Pod as Success
       k8s:

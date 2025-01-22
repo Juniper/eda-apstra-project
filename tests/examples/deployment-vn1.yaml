@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vn1-deployment
+  namespace: apstra-rhocp-demo
+  labels:
+    type: eda
+    vnet: vn1
+spec:
+  replicas: 1 
+  selector:
+    matchLabels:
+      type: eda
+      vnet: vn1
+  template:
+    metadata:
+      name: vn1-deployment
+      labels:
+        type: eda
+        vnet: vn1
+      annotations:
+        apstra.juniper.net/ep: '[
+          {
+            "vnetName": "vn1"
+          }
+        ]'
+        k8s.v1.cni.cncf.io/networks: '[
+          {
+            "name": "sriovnet-vn1",
+            "namespace": "apstra-rhocp-demo",
+            "interface": "ext0"
+          }
+        ]'
+    spec:
+      containers:
+        - name: iperf3
+          image: centos/tools
+          command: [ "/bin/bash", "-c", "--" ]
+          args: [ "while true; do sleep 300000; done;" ]
+          ports:
+            - containerPort: 5201
