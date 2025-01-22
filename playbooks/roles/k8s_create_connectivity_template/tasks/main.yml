@@ -205,7 +205,7 @@
 
     - name: Extract name of the net-attach-def
       set_fact:
-        net_attach_def_name: "{{ (annotations['k8s.v1.cni.cncf.io/networks'] |  from_yaml | json_query('[0].name') | default('') }}"
+        net_attach_def_name: "{{ annotations['k8s.v1.cni.cncf.io/networks'] |  from_yaml | json_query('[0].name') | default('') }}"
 
     - name: Get the net-attach-def info
       kubernetes.core.k8s_info:
