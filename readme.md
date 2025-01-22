@@ -177,6 +177,7 @@ This step is similar to [Creating a Project from a Public Repository](#6-creatin
 Below are the types of credentials that we create in Automation Decesions.
 
 1. Red Hat Ansible Automation Platform
+
 We need to get access to Ansible Execution to run jobs in Execution environment.
 
 1. Navigate to Users, select the user and go to tokens.
@@ -243,7 +244,7 @@ Once above validation is done, we can run sample yamls from [folder](./tests/) a
 ---
 
 ## Troubleshooting
-1. 
+1.
 
 
 ## Additional Resources
