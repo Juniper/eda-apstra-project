@@ -1,7 +1,7 @@
 ---
 - name: Print blueprintname
   debug:
-    msg: "{{ blueprintname }}"
+    msg: "{{ myblueprint }}"
 
 - name: Extract blueprint with default and convert to string
   set_fact:
