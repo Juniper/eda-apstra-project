@@ -3,14 +3,6 @@
   set_fact:
     bluprint_label_value: "{{ (annotations['apstra.juniper.net/vnet'] | regex_search('\"blueprintName\": \"([^\"]+)\"', '\\1') | first) | string }}"
 
-- name: set blueprint
-  set_fact:
-    blueprint: "{{ blueprintname }}"
-
-- name: print blueprint
-  debug:
-    msg: "{{ blueprint }}"
-
 - name: Connect to Apstra
   junipernetworks.apstra.authenticate:
     verify_certificates: false
