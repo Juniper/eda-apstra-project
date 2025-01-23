@@ -3,6 +3,14 @@
   set_fact:
     bluprint_label_value: "{{ (annotations['apstra.juniper.net/vnet'] | regex_search('\"blueprintName\": \"([^\"]+)\"', '\\1') | first) | string }}"
 
+- name: set blueprint
+  set_fact:
+    blueprint: "{{ blueprintname }}"
+
+- name: print blueprint
+  debug:
+    msg: "{{ blueprint }}"
+
 - name: Connect to Apstra
   junipernetworks.apstra.authenticate:
     verify_certificates: false
@@ -25,14 +33,6 @@
 - name: Check if deletionTimestamp is defined
   ansible.builtin.set_fact:
     deletion_timestamp: "{{ event.resource.metadata.deletionTimestamp | default(None) }}"
-
-- name: set blueprint
-  set_fact:
-    blueprint: "{{ blueprintname }}"
-
-- name: print blueprint
-  debug:
-    msg: "{{ blueprint }}"
 
 - name: Unlock the blueprint
   junipernetworks.apstra.blueprint:
