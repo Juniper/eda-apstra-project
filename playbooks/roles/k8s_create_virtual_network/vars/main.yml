@@ -3,4 +3,4 @@
 namespace: "{{ ns }}"
 annotations: "{{ annotate }}"
 event: "{{ ev }}"
-blueprintname: "{{ myblueprint }}"
+blueprintname: "{{ bp }}"

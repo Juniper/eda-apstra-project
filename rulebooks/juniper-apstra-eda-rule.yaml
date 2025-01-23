@@ -98,7 +98,7 @@
               ns: "{{ event.resource.metadata.name }}"
               annotate: "{{ event.resource.metadata.annotations }}"
               ev: "{{ event }}" 
-              myblueprint: "{{ blueprintname }}"
+              bp: "{{ blueprintname }}"
 
     - name: INIT_DONE event
       condition: event.type == "INIT_DONE"
