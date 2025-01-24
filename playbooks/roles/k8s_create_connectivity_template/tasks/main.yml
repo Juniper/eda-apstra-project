@@ -197,11 +197,15 @@
 
     - name: Extract namespace of the net-attach-def
       set_fact:
-        net_attach_def_namespace: "{{ (annotations['k8s.v1.cni.cncf.io/networks'] | regex_search('\"namespace\": \"([^\"]+)\"', '\\1') | first) | string }}"
+        net_attach_def_namespace: "{{ annotations['k8s.v1.cni.cncf.io/networks'] | from_yaml | json_query('[0].namespace') | default('') }}"
+
+ #   - name: Extract namespace of the net-attach-def
+ #     set_fact:
+ #       net_attach_def_namespace: "{{ (annotations['k8s.v1.cni.cncf.io/networks'] | regex_search('\"namespace\": \"([^\"]+)\"', '\\1') | first) | string }}"
 
     - name: Extract name of the net-attach-def
       set_fact:
-        net_attach_def_name: "{{ (annotations['k8s.v1.cni.cncf.io/networks'] | regex_search('\"name\": \"([^\"]+)\"', '\\1') | first) | string }}"
+        net_attach_def_name: "{{ annotations['k8s.v1.cni.cncf.io/networks'] |  from_yaml | json_query('[0].name') | default('') }}"
 
     - name: Get the net-attach-def info
       kubernetes.core.k8s_info:
