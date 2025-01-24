@@ -12,7 +12,7 @@
 - name: Get blueprint
   junipernetworks.apstra.blueprint:
     body:
-      label: "{{ blueprintname }}"
+      label: "{{ bluprint_label_value }}"
     auth_token: "{{ auth.token }}"
     lock_state: "ignore"
   register: bp
