@@ -3,4 +3,3 @@
 namespace: "{{ ns }}"
 annotations: "{{ annotate }}"
 event: "{{ ev }}"
-blurprint_name: "{{ bp }}"
