@@ -1,5 +1,9 @@
 # roles/create_sz/tasks/main.yml
 ---
+- name: print blurprint_name
+  debug:
+    msg: "{{ blurprint_name }}"
+
 - name: Fix escaped quotes and add missing commas for any number of parameters
   set_fact:
     # Step 1: Replace escaped quotes with normal quotes

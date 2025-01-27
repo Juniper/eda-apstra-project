@@ -26,6 +26,7 @@
               ns: "{{ event.resource.metadata.name }}"
               annotate: "{{ event.resource.metadata.annotations }}"
               ev: "{{ event }}"
+              bp: "{{ blurprint_name}}"
 
     - name: Multi event for sriovnet add
       condition: event.type == "ADDED" and event.resource.metadata.labels.type == eda and event.resource.kind == SriovNetwork
