@@ -28,6 +28,10 @@
         auth_token: "{{ auth.token }}"
       register: bp
 
+    - name: Print bp
+      debug:
+        msg: "{{ bp }}"
+
     - name: Commit the blueprint
       junipernetworks.apstra.blueprint:
         id: "{{ bp.id }}"
