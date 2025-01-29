@@ -39,6 +39,7 @@
               ns: "{{ event.resource.metadata.name }}"
               annotate: "{{ event.resource.metadata.annotations }}"
               ev: "{{ event }}"
+              bp: "{{ blueprint_name }}"
 
     - name: Multi event for Pod add
       condition: event.type == "ADDED" and event.resource.metadata.labels.type == eda and event.resource.kind == Pod
@@ -51,6 +52,7 @@
               ns: "{{ event.resource.metadata.name }}"
               annotate: "{{ event.resource.metadata.annotations }}"
               ev: "{{ event }}"
+              bp: "{{ blueprint_name }}"
 
     - name: Trigger action on Namespace deletion with specific annotation
       condition: event.type == "DELETED" and event.resource.metadata.labels.type == eda and event.resource.kind == Namespace
@@ -63,6 +65,7 @@
               ns: "{{ event.resource.metadata.name }}"
               annotate: "{{ event.resource.metadata.annotations }}"
               ev: "{{ event }}"
+              bp: "{{ blueprint_name }}"
 
     - name: Trigger action on SriovNetwork deletion with specific annotation
       condition: event.type == "DELETED" and event.resource.metadata.labels.type == eda and event.resource.kind == SriovNetwork
@@ -75,6 +78,7 @@
               ns: "{{ event.resource.metadata.name }}"
               annotate: "{{ event.resource.metadata.annotations }}"
               ev: "{{ event }}"
+              bp: "{{ blueprint_name }}"
 
     - name: Trigger action on PoD Deletion 
       condition: event.type == "DELETED" and event.resource.metadata.labels.type == eda and event.resource.kind == Pod
@@ -87,6 +91,7 @@
               ns: "{{ event.resource.metadata.name }}"
               annotate: "{{ event.resource.metadata.annotations }}"
               ev: "{{ event }}"
+              bp: "{{ blueprint_name }}"
 
     - name: Trigger action on  SriovNetwork update with specific annotation
       condition: event.type == "MODIFIED" and event.resource.metadata.labels.type == eda and event.resource.kind == SriovNetwork
@@ -99,6 +104,7 @@
               ns: "{{ event.resource.metadata.name }}"
               annotate: "{{ event.resource.metadata.annotations }}"
               ev: "{{ event }}" 
+              bp: "{{ blueprint_name }}"
 
     - name: INIT_DONE event
       condition: event.type == "INIT_DONE"
@@ -109,3 +115,4 @@
           job_args:
             extra_vars: 
               init_ev: "{{ event }}"
+              bp: "{{ blueprint_name }}"
