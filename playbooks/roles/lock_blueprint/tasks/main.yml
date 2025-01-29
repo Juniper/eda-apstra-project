@@ -26,15 +26,15 @@
         body:
           label: "{{ bluprint_label_value }}"
         auth_token: "{{ auth.token }}"
-      register: bp
+      register: register_bp
 
-    - name: Print bp
+    - name: Print register_bp
       debug:
-        msg: "{{ bp }}"
+        msg: "{{ register_bp }}"
 
     - name: Commit the blueprint
       junipernetworks.apstra.blueprint:
-        id: "{{ bp.id }}"
+        id: "{{ register_bp.id }}"
         lock_state: "ignore"
         state: committed
         auth_token: "{{ auth.token }}"
@@ -58,11 +58,11 @@
         body:
           label: "{{ bluprint_label_value }}"
         auth_token: "{{ auth.token }}"
-      register: bp
+      register: register_bp
 
     - name: Commit the blueprint
       junipernetworks.apstra.blueprint:
-        id: "{{ bp.id }}"
+        id: "{{ register_bp.id }}"
         lock_state: "ignore"
         state: committed
         auth_token: "{{ auth.token }}"
@@ -92,7 +92,7 @@
           {{
             (pod_annotations['apstra.juniper.net/vrf'] | from_json | json_query("[].blueprintName") | first) | string
           }}
-      register: bp
+      register: register_bp
 
     - name: Connect to Apstra
       junipernetworks.apstra.authenticate:
@@ -105,11 +105,11 @@
         body:
           label: "{{ blueprint_name }}"
         auth_token: "{{ auth.token }}"
-      register: bp
+      register: register_bp
 
     - name: Commit the blueprint
       junipernetworks.apstra.blueprint:
-        id: "{{ bp.id }}"
+        id: "{{ register_bp.id }}"
         lock_state: "ignore"
         state: committed
         auth_token: "{{ auth.token }}"
