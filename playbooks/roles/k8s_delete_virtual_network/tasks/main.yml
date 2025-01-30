@@ -16,7 +16,7 @@
       label: "{{ bluprint_label_value }}"
     auth_token: "{{ auth.token }}"
     lock_state: "ignore"
-  register: bp
+  register: register_bp
 
 - name: Print event.metadata.deletionTimestamp
   debug:
@@ -29,7 +29,7 @@
 
 - name: Unlock the blueprint
   junipernetworks.apstra.blueprint:
-    id: "{{ bp.id }}"
+    id: "{{ register_bp.id }}"
     lock_state: "unlocked"
     state: committed
     auth_token: "{{ auth.token }}"
@@ -38,7 +38,7 @@
 
 - name: Commit the blueprint
   junipernetworks.apstra.blueprint:
-    id: "{{ bp.id }}"
+    id: "{{ register_bp.id }}"
     lock_state: "ignore"
     state: committed
     auth_token: "{{ auth.token }}"
@@ -72,11 +72,11 @@
           label: "{{ bluprint_label_value }}"
         auth_token: "{{ auth.token }}"
         lock_state: "ignore"
-      register: bp
+      register: register_bp
 
     - name: Get the virtual_network
       junipernetworks.apstra.virtual_network:
-        id: "{{ bp.id }}"
+        id: "{{ register_bp.id }}"
         body:
           label: "{{ vnet_label_value }}"
         auth_token: "{{ auth.token }}"
@@ -105,7 +105,7 @@
   rescue:
     - name: Unlock the blueprint if task fails
       junipernetworks.apstra.blueprint:
-        id: "{{ bp.id }}"
+        id: "{{ register_bp.id }}"
         lock_state: "unlocked"
         state: committed
         auth_token: "{{ auth.token }}"
@@ -114,7 +114,7 @@
   always:
     - name: Unlock the blueprint
       junipernetworks.apstra.blueprint:
-        id: "{{ bp.id }}"
+        id: "{{ register_bp.id }}"
         lock_state: "unlocked"
         state: committed
         auth_token: "{{ auth.token }}"
@@ -122,7 +122,7 @@
 
     - name: Commit the blueprint
       junipernetworks.apstra.blueprint:
-        id: "{{ bp.id }}"
+        id: "{{ register_bp.id }}"
         lock_state: "ignore"
         state: committed
         auth_token: "{{ auth.token }}"
