@@ -13,6 +13,13 @@ This project leverages **OpenShift 4.17** and **Red Hat Ansible Automation Platf
 5. Juniepr Apstra 5.0 or 5.1
 6. Access to Juniper public Git repository containing the automation project files.
 
+## Notes:
+
+1. Objects which are labelled with type=eda will only be recongized by Apstra EDA.
+2. It is required to set Projects, Credentials, Apstra Blueprint name and Rulebook Activations to run Apstra EDA as given in this document.
+3. Docker images for decision environment and execution environment required to build before setting up the environment.
+
+
 Useful documentation:
 - [Automation Decisions](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/using_automation_decisions/index)
 - [Automation Execution Configuration](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/configuring_automation_execution/index)
