@@ -163,7 +163,7 @@ We need to templates for each type of action. Please refer the images for creati
 #### 1. Creating Decision Environment
 Automation Decisions help define and execute rule-based workflows.This is similar to creating execution environment mentioned in [Creating Execution Environments](#1-creating-execution-environments)
 
-Please refer [guide](./eda-decision-environment/README.md) to create container image and deploy decision environment. Once container image is create follow the steps below to create decision environment.
+Please refer [guide](https://github.com/Juniper/k8s.eda/blob/main/README.md#building-and-publishing-a-decision-environment-image) to create container image and deploy decision environment. Once container image is create follow the steps below to create decision environment.
 
 1. Navigate to **Automation Decisions**.
 2. Click **Add Decision Environment** to set up the environment:
@@ -173,7 +173,7 @@ Please refer [guide](./eda-decision-environment/README.md) to create container i
 
 This is sample decision environment creation [image](./tests/images/de-example.png).
 
-For detailed guidance, refer to the [Using Automation Decisions Documentation](https://github.com/Juniper/apstra-ansible-collection?tab=readme-ov-file#image-build).
+For detailed guidance, refer to the [Using Automation Decisions Documentation](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/using_automation_decisions/index).
 
 #### 2. Creating a Project
 
