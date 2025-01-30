@@ -13,6 +13,13 @@ This project leverages **OpenShift 4.17** and **Red Hat Ansible Automation Platf
 5. Juniepr Apstra 5.0 or 5.1
 6. Access to Juniper public Git repository containing the automation project files.
 
+## Notes:
+
+1. Objects which are labelled with type=eda will only be recongized by Apstra EDA.
+2. It is required to set Projects, Credentials, Apstra Blueprint name and Rulebook Activations to run Apstra EDA as given in this document.
+3. Docker images for decision environment and execution environment required to build before setting up the environment.
+
+
 Useful documentation:
 - [Automation Decisions](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/using_automation_decisions/index)
 - [Automation Execution Configuration](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/configuring_automation_execution/index)
@@ -31,7 +38,7 @@ This project uses Automation Decisions and Automation Execusion for getting even
 
 You can run Ansible automation in containers, like any other modern software application. Ansible uses container images known as Execution Environments (EE) that act as control nodes. 
 
-To create Execution Envrionments container image follow the instructions from [here](./tower-execution-environment/README.md)
+To create Execution Envrionments container image follow the instructions from [here](https://github.com/Juniper/apstra-ansible-collection?tab=readme-ov-file#image-build)
 
 Once container image is created and pushed to artifactory or similar location which is accessible by Ansible Automation Platform, follow below steps to create Execution Environment.
 
@@ -166,7 +173,7 @@ Please refer [guide](./eda-decision-environment/README.md) to create container i
 
 This is sample decision environment creation [image](./tests/images/de-example.png).
 
-For detailed guidance, refer to the [Using Automation Decisions Documentation](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/using_automation_decisions/index).
+For detailed guidance, refer to the [Using Automation Decisions Documentation](https://github.com/Juniper/apstra-ansible-collection?tab=readme-ov-file#image-build).
 
 #### 2. Creating a Project
 
@@ -200,6 +207,7 @@ Rulebook activations are used to trigger specific rule-based workflows.
    - **Inventory**: Select the inventory to use.
    - **Execution Environment**: Select the execution environment.
    - **Variables**: Provide any required input variables.
+  We need to provide blueprint_name as variable for Apstra Blueprint name as shown in image [here](./tests/images/rulebook-activation.png)
 4. Save and activate the rulebook.
 
 Example of Rulebook Activation can be reffered [here](./tests/images/rulebook-activation.png)
@@ -244,7 +252,14 @@ Once above validation is done, we can run sample yamls from [folder](./tests/) a
 ---
 
 ## Troubleshooting
-1.
+1. If blueprint is locked during the run.
+- Ansible play fails if blueprint gets lock and shows below error 
+```bash
+fatal: [localhost]: FAILED! => {"changed": false, "msg": "Failed to lock blueprint 4b954fc4-91ba-478e-9f25-3e78168f83ca within 60 seconds"}
+```
+Solution: 
+1. Unlock the blueprint from Apstra UI.
+2. Restart rule book activation, which will trigger init-done playbooks to sync with OpenShift resources.
 
 
 ## Additional Resources
