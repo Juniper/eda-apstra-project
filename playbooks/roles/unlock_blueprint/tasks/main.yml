@@ -75,13 +75,9 @@
       set_fact:
         pod_annotations: "{{ podnamespace_info.resources[0].metadata.annotations }}"
         
-    - name: Extract network names from apstra.juniper.net annotation
+    - name: Set the blueprint name
       set_fact:
-        blueprint_name: >-
-          {{
-            (pod_annotations['apstra.juniper.net/vrf'] | from_json | json_query("[].blueprintName") | first) | string
-          }}
-      register: register_bp
+        bluprint_label_value: "{{ blueprint_name }}"
 
     - name: Connect to Apstra
       junipernetworks.apstra.authenticate:
@@ -92,7 +88,7 @@
     - name: Lock blueprint
       junipernetworks.apstra.blueprint:
         body:
-          label: "{{ blueprint_name }}"
+          label: "{{ bluprint_label_value }}"
         auth_token: "{{ auth.token }}"
         lock_state: "unlocked"
       register: register_bp
