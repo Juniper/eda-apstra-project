@@ -58,9 +58,9 @@
   register: auth
 
 - block:
-    - name: Extract blueprint with default and convert to string
+    - name: Set the blueprint name
       set_fact:
-        bluprint_label_value: "{{ (annotations['apstra.juniper.net/vnet'] | regex_search('\"blueprintName\": \"([^\"]+)\"', '\\1') | first) | string }}"
+        bluprint_label_value: "{{ blueprint_name }}"
     
     - name: Extract virtual network label value
       set_fact:
