@@ -261,25 +261,6 @@
   set_fact:
     bluprint_label_value: "{{ blueprint_name }}"
 
-#- name: Get the blueprint name from pod namespace annotations
-#  k8s_info: 
-#    api_version: v1
-#    kind: Namespace
-#    name: "{{ namespace }}"
-#  register: podnamespace_info
-
-#- name: Get the annotations of the namespace
-#  set_fact:
-#    pod_annotations: "{{ podnamespace_info.resources[0].metadata.annotations }}"
-
-#- name: Extract network names from apstra.juniper.net annotation
-#  set_fact:
-#    blueprint_name: >-
-#      {{
-#        (pod_annotations['apstra.juniper.net/vrf'] | from_json | json_query("[].blueprintName") | first) | string
-#      }}
-#  register: bp
-
 - name: Get blueprint
   junipernetworks.apstra.blueprint:
     body:
