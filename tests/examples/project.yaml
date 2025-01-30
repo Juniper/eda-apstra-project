@@ -11,7 +11,6 @@ metadata:
   annotations:
     apstra.juniper.net/vrf: '[
       {
-        "vrfName": "vrf-demo",
-        "blueprintName": "eda-bp"
+        "vrfName": "vrf-demo"
       }
     ]'

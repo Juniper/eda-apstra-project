@@ -199,10 +199,6 @@
       set_fact:
         net_attach_def_namespace: "{{ annotations['k8s.v1.cni.cncf.io/networks'] | from_yaml | json_query('[0].namespace') | default('') }}"
 
- #   - name: Extract namespace of the net-attach-def
- #     set_fact:
- #       net_attach_def_namespace: "{{ (annotations['k8s.v1.cni.cncf.io/networks'] | regex_search('\"namespace\": \"([^\"]+)\"', '\\1') | first) | string }}"
-
     - name: Extract name of the net-attach-def
       set_fact:
         net_attach_def_name: "{{ annotations['k8s.v1.cni.cncf.io/networks'] |  from_yaml | json_query('[0].name') | default('') }}"
@@ -223,34 +219,17 @@
       debug:
         msg: "VLAN ID: {{ vlan_id }}" 
 
-#### Get the bluprint from POD namesapce and project annotations
-
-    - name: Get the bluprint name from pod namespace annotations
-      k8s_info: 
-        api_version: v1
-        kind: Namespace
-        name: "{{ namespace }}"
-      register: podnamespace_info
-      
-    - name: Get the annotations of the namespace
+    - name: Set the blueprint name
       set_fact:
-        pod_annotations: "{{ podnamespace_info.resources[0].metadata.annotations }}"
-
-    - name: Extract network names from apstra.juniper.net annotation
-      set_fact:
-        blueprint_name: >-
-          {{
-            (pod_annotations['apstra.juniper.net/vrf'] | from_json | json_query("[].blueprintName") | first) | string
-          }}
-      register: bp
+        bluprint_label_value: "{{ blueprint_name }}"
       
     - name: Get blueprint
       junipernetworks.apstra.blueprint:
         body:
-          label: "{{ blueprint_name }}"
+          label: "{{ bluprint_label_value }}"
         auth_token: "{{ auth.token }}"
         lock_state: "ignore"
-      register: bp
+      register: register_bp
 
     - name: Extract tags from the annotations if present
       set_fact:
@@ -264,7 +243,7 @@
 
     - name: Create tags if sz_tags is defined and is a list
       junipernetworks.apstra.tag:
-        id: "{{ bp.id }}"
+        id: "{{ register_bp.id }}"
         body:
           label: "{{ tag }}"
           description: "test tag description"
@@ -276,7 +255,7 @@
 
     - name: Update an endpoint policy application point
       junipernetworks.apstra.endpoint_policy:
-        id: "{{ bp.id }}"
+        id: "{{ register_bp.id }}"
         virtual_network_label: "{{ vnet_label_value }}"
         tags: "{{ sz_tags if sz_tags is not none else omit }}"
         body:
@@ -338,7 +317,7 @@
   rescue:
     - name: Unlock the  blueprint as task has failed
       junipernetworks.apstra.blueprint:
-        id: "{{ bp.id }}"
+        id: "{{ register_bp.id }}"
         lock_state: "unlocked"
         state: committed
         auth_token: "{{ auth.token }}"
@@ -371,7 +350,7 @@
   always:
     - name: Unlock the  blueprint 
       junipernetworks.apstra.blueprint:
-        id: "{{ bp.id }}"
+        id: "{{ register_bp.id }}"
         lock_state: "unlocked"
         state: committed
         auth_token: "{{ auth.token }}"
@@ -379,7 +358,7 @@
 
     - name: Commit the blueprint
       junipernetworks.apstra.blueprint:
-        id: "{{ bp.id }}"
+        id: "{{ register_bp.id }}"
         lock_state: "ignore"
         state: committed
         auth_token: "{{ auth.token }}"

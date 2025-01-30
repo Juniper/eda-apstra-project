@@ -31,9 +31,9 @@
   set_fact:
     vrf_name_value: "{{ (annotations['apstra.juniper.net/vrf'] | regex_search('\"vrfName\": \"([^\"]+)\"', '\\1') | first) | default('default-vrf_name') | string }}"
 
-- name: Extract blueprint with default and convert to string
+- name: Set the blueprint name
   set_fact:
-    bluprint_label_value: "{{ (annotations['apstra.juniper.net/vrf'] | regex_search('\"blueprintName\": \"([^\"]+)\"', '\\1') | first) | string }}"
+    bluprint_label_value: "{{ blueprint_name }}"
 
 - name: Connect to Apstra
   junipernetworks.apstra.authenticate:
@@ -48,11 +48,11 @@
           label: "{{ bluprint_label_value }}"
         auth_token: "{{ auth.token }}"
         lock_state: "ignore"
-      register: bp
+      register: register_bp
 
     - name: Get security_zone by label
       junipernetworks.apstra.security_zone:
-        id: "{{ bp.id }}"
+        id: "{{ register_bp.id }}"
         body:
           label: "{{ label_value }}"
         auth_token: "{{ auth.token }}"
@@ -68,7 +68,7 @@
   rescue:        
     - name: Unlock the blueprint as task is failed
       junipernetworks.apstra.blueprint:
-        id: "{{ bp.id }}"
+        id: "{{ register_bp.id }}"
         lock_state: "unlocked"
         state: committed
         auth_token: "{{ auth.token }}"
@@ -77,7 +77,7 @@
   always:
     - name: Unlock the blueprint
       junipernetworks.apstra.blueprint:
-        id: "{{ bp.id }}"
+        id: "{{ register_bp.id }}"
         lock_state: "unlocked"
         state: committed
         auth_token: "{{ auth.token }}"
@@ -85,7 +85,7 @@
 
     - name: Commit the blueprint
       junipernetworks.apstra.blueprint:
-        id: "{{ bp.id }}"
+        id: "{{ register_bp.id }}"
         lock_state: "ignore"
         state: committed
         auth_token: "{{ auth.token }}"

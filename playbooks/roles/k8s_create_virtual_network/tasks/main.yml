@@ -1,7 +1,7 @@
 ---
-- name: Extract blueprint with default and convert to string
+- name: Set the blueprint name
   set_fact:
-    bluprint_label_value: "{{ (annotations['apstra.juniper.net/vnet'] | regex_search('\"blueprintName\": \"([^\"]+)\"', '\\1') | first) | string }}"
+    bluprint_label_value: "{{ blueprint_name }}"
 
 - name: Connect to Apstra
   junipernetworks.apstra.authenticate:
@@ -15,7 +15,7 @@
       label: "{{ bluprint_label_value }}"
     auth_token: "{{ auth.token }}"
     lock_state: "ignore"
-  register: bp
+  register: register_bp
 
 - name: print event.metadata.deletionTimestamp
   debug:
@@ -28,7 +28,7 @@
 
 - name: Unlock the blueprint
   junipernetworks.apstra.blueprint:
-    id: "{{ bp.id }}"
+    id: "{{ register_bp.id }}"
     lock_state: "unlocked"
     state: committed
     auth_token: "{{ auth.token }}"
@@ -37,7 +37,7 @@
 
 - name: Commit the blueprint
   junipernetworks.apstra.blueprint:
-    id: "{{ bp.id }}"
+    id: "{{ register_bp.id }}"
     lock_state: "ignore"
     state: committed
     auth_token: "{{ auth.token }}"
@@ -67,9 +67,9 @@
   ansible.builtin.set_fact:
     vnet_data: "{{ vnet_clean_str[0] }}"
 
-- name: Extract blueprint with default and convert to string
+- name: Set the blueprint name
   set_fact:
-    bluprint_label_value: "{{ (annotations['apstra.juniper.net/vnet'] | regex_search('\"blueprintName\": \"([^\"]+)\"', '\\1') | first) | string }}"
+    bluprint_label_value: "{{ blueprint_name }}"
 
 - name: Extract blueprint with default and convert to string
   set_fact:
@@ -93,7 +93,7 @@
           label: "{{ bluprint_label_value }}"
         auth_token: "{{ auth.token }}"
         lock_state: "ignore"
-      register: bp
+      register: register_bp
 
     - name: Run apstra_facts module
       junipernetworks.apstra.apstra_facts:
@@ -104,7 +104,7 @@
     
     - name: Get security_zone by label
       junipernetworks.apstra.security_zone:
-        id: "{{ bp.id }}"
+        id: "{{ register_bp.id }}"
         body:
           label: "{{ sz_label_value }}"
           vrf_name: "{{ sz_label_value }}"
@@ -113,7 +113,7 @@
 
     - name: set blueprint ID fact
       ansible.builtin.set_fact:
-        blueprint_id: "{{ bp.id.blueprint }}"
+        blueprint_id: "{{ register_bp.id.blueprint }}"
 
     - name: Extract list of node ids
       ansible.builtin.set_fact:
@@ -214,7 +214,7 @@
 
     - name: Create tags if sz_tags is defined and is a list
       junipernetworks.apstra.tag:
-        id: "{{ bp.id }}"
+        id: "{{ register_bp.id }}"
         body:
           label: "{{ tag }}"
           description: "test tag description"
@@ -226,7 +226,7 @@
 
     - name: Create virtual_network
       junipernetworks.apstra.virtual_network:
-        id: "{{ bp.id }}"
+        id: "{{ register_bp.id }}"
         body: "{{ vnet_data_filtered }}"
         auth_token: "{{ auth.token }}"
         tags: "{{ sz_tags if sz_tags is not none else omit }}"
@@ -237,7 +237,7 @@
   
     - name: Get the resource_groups
       junipernetworks.apstra.apstra_facts:
-        id: "{{ bp.id }}"
+        id: "{{ register_bp.id }}"
         auth_token: "{{ auth.token }}"
         gather_network_facts:
           - blueprints.resource_groups
@@ -254,7 +254,7 @@
     - name: Update resource_group
       junipernetworks.apstra.resource_group:
         id:
-          blueprint: "{{ bp.id.blueprint }}"
+          blueprint: "{{ register_bp.id.blueprint }}"
           group_type: "ip"
           group_name: "sz:{{ sz.security_zone.id }},leaf_loopback_ips"
         body:
@@ -286,7 +286,7 @@
   rescue:        
     - name: Unlock the bluprint as task is failed
       junipernetworks.apstra.blueprint:
-        id: "{{ bp.id }}"
+        id: "{{ register_bp.id }}"
         lock_state: "unlocked"
         state: committed
         auth_token: "{{ auth.token }}"
@@ -319,7 +319,7 @@
   always:
     - name: Unlock the  blueprint
       junipernetworks.apstra.blueprint:
-        id: "{{ bp.id }}"
+        id: "{{ register_bp.id }}"
         lock_state: "unlocked"
         state: committed
         auth_token: "{{ auth.token }}"
@@ -327,7 +327,7 @@
 
     - name: Commit the blueprint
       junipernetworks.apstra.blueprint:
-        id: "{{ bp.id }}"
+        id: "{{ register_bp.id }}"
         lock_state: "ignore"
         state: committed
         auth_token: "{{ auth.token }}"

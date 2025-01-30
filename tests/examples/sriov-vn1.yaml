@@ -10,7 +10,6 @@ metadata:
     apstra.juniper.net/vnet: '[
       {
         "vnetName": "vn1",
-        "blueprintName": "eda-bp",
         "vrfName": "vrf-demo"
       }
     ]'

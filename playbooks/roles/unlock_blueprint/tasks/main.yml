@@ -2,9 +2,9 @@
 - name: Unlock the blueprint for security 
   when: event.resource.kind in ["Project", "Namespace"]
   block: 
-    - name: Extract blueprint with default and convert to string
+    - name: Set the blueprint name
       set_fact:
-        bluprint_label_value: "{{ (annotations['apstra.juniper.net/vrf'] | regex_search('\"blueprintName\": \"([^\"]+)\"', '\\1') | first) | string }}"
+        bluprint_label_value: "{{ blueprint_name }}"
 
     - name: Connect to Apstra
       junipernetworks.apstra.authenticate:
@@ -18,11 +18,11 @@
           label: "{{ bluprint_label_value }}"
         auth_token: "{{ auth.token }}"
         lock_state: "unlocked"
-      register: bp
+      register: register_bp
 
     - name: Commit the blueprint
       junipernetworks.apstra.blueprint:
-        id: "{{ bp.id }}"
+        id: "{{ register_bp.id }}"
         lock_state: "ignore"
         state: committed
         auth_token: "{{ auth.token }}"
@@ -31,9 +31,9 @@
 - name: Unlock the blueprint for sriovnetwork 
   when: event.resource.kind in ["SriovNetwork","NetworkAttachmentDefinition"]
   block: 
-    - name: Extract blueprint with default and convert to string
+    - name: Set the blueprint name
       set_fact:
-        bluprint_label_value: "{{ (annotations['apstra.juniper.net/vnet'] | regex_search('\"blueprintName\": \"([^\"]+)\"', '\\1') | first) | string }}"
+        bluprint_label_value: "{{ blueprint_name }}"
 
     - name: Connect to Apstra
       junipernetworks.apstra.authenticate:
@@ -47,11 +47,11 @@
           label: "{{ bluprint_label_value }}"
         auth_token: "{{ auth.token }}"
         lock_state: "unlocked"
-      register: bp
+      register: register_bp
 
     - name: Commit the blueprint
       junipernetworks.apstra.blueprint:
-        id: "{{ bp.id }}"
+        id: "{{ register_bp.id }}"
         lock_state: "ignore"
         state: committed
         auth_token: "{{ auth.token }}"
@@ -75,13 +75,9 @@
       set_fact:
         pod_annotations: "{{ podnamespace_info.resources[0].metadata.annotations }}"
         
-    - name: Extract network names from apstra.juniper.net annotation
+    - name: Set the blueprint name
       set_fact:
-        blueprint_name: >-
-          {{
-            (pod_annotations['apstra.juniper.net/vrf'] | from_json | json_query("[].blueprintName") | first) | string
-          }}
-      register: bp
+        bluprint_label_value: "{{ blueprint_name }}"
 
     - name: Connect to Apstra
       junipernetworks.apstra.authenticate:
@@ -92,14 +88,14 @@
     - name: Lock blueprint
       junipernetworks.apstra.blueprint:
         body:
-          label: "{{ blueprint_name }}"
+          label: "{{ bluprint_label_value }}"
         auth_token: "{{ auth.token }}"
         lock_state: "unlocked"
-      register: bp
+      register: register_bp
 
     - name: Commit the blueprint
       junipernetworks.apstra.blueprint:
-        id: "{{ bp.id }}"
+        id: "{{ register_bp.id }}"
         lock_state: "ignore"
         state: committed
         auth_token: "{{ auth.token }}"
