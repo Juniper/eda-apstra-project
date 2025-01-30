@@ -67,28 +67,31 @@
 - name: Lock the blueprint for Pod
   when: event.resource.kind in ["Pod"]
   block: 
-    - name: Get the name of the namespace
+    - name: Set the blueprint name
       set_fact:
-        namespace: "{{ event.resource.metadata.namespace }}"
+        bluprint_label_value: "{{ blueprint_name }}"
+#    - name: Get the name of the namespace
+#      set_fact:
+#        namespace: "{{ event.resource.metadata.namespace }}"
 
-    - name: Get the bluprint name from pod namespace annotations
-      k8s_info: 
-        api_version: v1
-        kind: Namespace
-        name: "{{ namespace }}"
-      register: podnamespace_info
+#    - name: Get the bluprint name from pod namespace annotations
+#      k8s_info: 
+#        api_version: v1
+#        kind: Namespace
+#        name: "{{ namespace }}"
+#      register: podnamespace_info
       
-    - name: Get the annotations of the namespace
-      set_fact:
-        pod_annotations: "{{ podnamespace_info.resources[0].metadata.annotations }}"
+#    - name: Get the annotations of the namespace
+#      set_fact:
+#        pod_annotations: "{{ podnamespace_info.resources[0].metadata.annotations }}"
         
-    - name: Extract network names from apstra.juniper.net annotation
-      set_fact:
-        blueprint_name: >-
-          {{
-            (pod_annotations['apstra.juniper.net/vrf'] | from_json | json_query("[].blueprintName") | first) | string
-          }}
-      register: register_bp
+#    - name: Extract network names from apstra.juniper.net annotation
+#      set_fact:
+#        blueprint_name: >-
+#          {{
+#            (pod_annotations['apstra.juniper.net/vrf'] | from_json | json_query("[].blueprintName") | first) | string
+#          }}
+#      register: register_bp
 
     - name: Connect to Apstra
       junipernetworks.apstra.authenticate:
@@ -99,7 +102,7 @@
     - name: Lock blueprint
       junipernetworks.apstra.blueprint:
         body:
-          label: "{{ blueprint_name }}"
+          label: "{{ bluprint_label_value }}"
         auth_token: "{{ auth.token }}"
       register: register_bp
 
