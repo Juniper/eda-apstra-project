@@ -23,8 +23,8 @@ This project leverages **OpenShift 4.17** and **Red Hat Ansible Automation Platf
 Useful documentation:
 - [Automation Decisions](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/using_automation_decisions/index)
 - [Automation Execution Configuration](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/configuring_automation_execution/index)
-- [Installing NMState Operator](https://docs.openshift.com/container-platform/4.10/networking/k8s_nmstate/k8s-nmstate-about-the-k8s-nmstate-operator.html)
-- [Installing SR-IOV Network Opeator](https://docs.openshift.com/container-platform/4.8/networking/hardware_networks/installing-sriov-operator.html#install-operator-web-console_installing-sriov-operator)
+- [Installing NMState Operator](https://docs.openshift.com/container-platform/4.15/networking/k8s_nmstate/k8s-nmstate-about-the-k8s-nmstate-operator.html)
+- [Installing SR-IOV Network Opeator](https://docs.openshift.com/container-platform/4.17/networking/hardware_networks/installing-sriov-operator.html#install-operator-web-console_installing-sriov-operator)
 
 ---
 
