@@ -8,7 +8,7 @@ This project leverages **OpenShift 4.17** and **Red Hat Ansible Automation Platf
 ## Prerequisites
 1. **OpenShift 4.17** environment set up and configured.
 2. **Ansible Automation Platform 2.5** operator installed and configured.
-3. **Kubernetes NMState** operator installed.
+3. **Kubernetes NMState** operator installed and lldp configured on the nodes.
 4. **OpenShift SR-IOV Network** operator installed.
 5. Juniepr Apstra 5.0 or 5.1
 6. Access to Juniper public Git repository containing the automation project files.
@@ -25,6 +25,41 @@ Useful documentation:
 - [Automation Execution Configuration](https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/configuring_automation_execution/index)
 - [Installing NMState Operator](https://docs.openshift.com/container-platform/4.15/networking/k8s_nmstate/k8s-nmstate-about-the-k8s-nmstate-operator.html)
 - [Installing SR-IOV Network Opeator](https://docs.openshift.com/container-platform/4.17/networking/hardware_networks/installing-sriov-operator.html#install-operator-web-console_installing-sriov-operator)
+
+## Steps to configure lldp on nodes
+
+There are two steps to enable lldp configuration on node using NMState.
+
+1. Enable lldp at node level
+
+Make sure the nodenetworkstate for each node lldp should be enabled.
+```yaml
+      lldp:
+        enabled: true
+```
+
+2. Chnage the interfaces and apply below yaml for NodeNetworkConfigurationPolicy.
+
+```yaml
+apiVersion: nmstate.io/v1
+kind: NodeNetworkConfigurationPolicy
+metadata:
+  name: lldp-node-policy 
+spec:
+  nodeSelector: 
+    node-role.kubernetes.io/worker: "" 
+  maxUnavailable: 3 
+  desiredState:
+    interfaces:
+      - name: enp4s0f0
+        type: ethernet
+        lldp:
+          enabled: true
+      - name: enp4s0f1
+        type: ethernet
+        lldp:
+          enabled: true
+```
 
 ---
 
