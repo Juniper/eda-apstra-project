@@ -10,6 +10,8 @@
       rescue:
         - include_role:
             name: unlock_blueprint
+        - fail:
+            msg: "Lock Blueprint role failed."
 
     - name: Create K8s Security Zone
       block:
@@ -18,6 +20,8 @@
       rescue:
         - include_role:
             name: unlock_blueprint
+        - fail:
+            msg: "Delete K8s Security Zone role failed."
 
     - name: Unlock Blueprint (if previous roles succeeded)
       include_role:
