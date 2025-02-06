@@ -19,7 +19,7 @@
       condition: event.type == "ADDED" and event.resource.metadata.labels.type == eda and event.resource.kind == Namespace
       action:
         run_job_template:
-          name: apstra-bp.yml
+          name: create-vrf
           organization: Default
           job_args:
             extra_vars: 
