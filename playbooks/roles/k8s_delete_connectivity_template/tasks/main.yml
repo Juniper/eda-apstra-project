@@ -252,7 +252,7 @@
     number_of_pods: "{{ mycm.resources[0].data[if_node_name] | from_json | length }}"
 
 - name: Connect to Apstra
-  junipernetworks.apstra.authenticate:
+  juniper.apstra.authenticate:
     verify_certificates: false
     logout: false
   register: auth
@@ -262,7 +262,7 @@
     bluprint_label_value: "{{ blueprint_name }}"
 
 - name: Get blueprint
-  junipernetworks.apstra.blueprint:
+  juniper.apstra.blueprint:
     body:
       label: "{{ bluprint_label_value }}"
     auth_token: "{{ auth.token }}"
@@ -270,7 +270,7 @@
   register: register_bp
 
 - name: Update an endpoint policy application point
-  junipernetworks.apstra.endpoint_policy:
+  juniper.apstra.endpoint_policy:
     id: "{{ register_bp.id }}"
     virtual_network_label: "{{ vnet_label_value }}"
     body:
@@ -316,7 +316,7 @@
   when: updated_data is defined 
 
 - name: Unlock the blueprint
-  junipernetworks.apstra.blueprint:
+  juniper.apstra.blueprint:
     id: "{{ register_bp.id }}"
     lock_state: "unlocked"
     state: committed
@@ -324,7 +324,7 @@
   register: blueprint_unlock
 
 - name: Commit the blueprint
-  junipernetworks.apstra.blueprint:
+  juniper.apstra.blueprint:
     id: "{{ register_bp.id }}"
     lock_state: "ignore"
     state: committed

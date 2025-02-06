@@ -4,13 +4,13 @@
     bluprint_label_value: "{{ blueprint_name }}"
 
 - name: Connect to Apstra
-  junipernetworks.apstra.authenticate:
+  juniper.apstra.authenticate:
     verify_certificates: false
     logout: false
   register: auth
 
 - name: Get blueprint
-  junipernetworks.apstra.blueprint:
+  juniper.apstra.blueprint:
     body:
       label: "{{ bluprint_label_value }}"
     auth_token: "{{ auth.token }}"
@@ -27,7 +27,7 @@
     deletion_timestamp: "{{ event.resource.metadata.deletionTimestamp | default(None) }}"
 
 - name: Unlock the blueprint
-  junipernetworks.apstra.blueprint:
+  juniper.apstra.blueprint:
     id: "{{ register_bp.id }}"
     lock_state: "unlocked"
     state: committed
@@ -36,7 +36,7 @@
   when: deletion_timestamp != ""
 
 - name: Commit the blueprint
-  junipernetworks.apstra.blueprint:
+  juniper.apstra.blueprint:
     id: "{{ register_bp.id }}"
     lock_state: "ignore"
     state: committed
@@ -81,14 +81,14 @@
 
 
 - name: Connect to Apstra
-  junipernetworks.apstra.authenticate:
+  juniper.apstra.authenticate:
     verify_certificates: false
     logout: false
   register: auth
 
 - block:
     - name: Get blueprint
-      junipernetworks.apstra.blueprint:
+      juniper.apstra.blueprint:
         body:
           label: "{{ bluprint_label_value }}"
         auth_token: "{{ auth.token }}"
@@ -96,14 +96,14 @@
       register: register_bp
 
     - name: Run apstra_facts module
-      junipernetworks.apstra.apstra_facts:
+      juniper.apstra.apstra_facts:
         gather_network_facts:
         - 'blueprints.nodes'
         available_network_facts: true
       register: apstra_facts
     
     - name: Get security_zone by label
-      junipernetworks.apstra.security_zone:
+      juniper.apstra.security_zone:
         id: "{{ register_bp.id }}"
         body:
           label: "{{ sz_label_value }}"
@@ -213,7 +213,7 @@
       when: annotations['apstra.juniper.net/vnet'] is not defined or 'tags' not in annotations['apstra.juniper.net/vnet']
 
     - name: Create tags if sz_tags is defined and is a list
-      junipernetworks.apstra.tag:
+      juniper.apstra.tag:
         id: "{{ register_bp.id }}"
         body:
           label: "{{ tag }}"
@@ -225,7 +225,7 @@
         loop_var: tag
 
     - name: Create virtual_network
-      junipernetworks.apstra.virtual_network:
+      juniper.apstra.virtual_network:
         id: "{{ register_bp.id }}"
         body: "{{ vnet_data_filtered }}"
         auth_token: "{{ auth.token }}"
@@ -236,7 +236,7 @@
       until: vn.failed == false
   
     - name: Get the resource_groups
-      junipernetworks.apstra.apstra_facts:
+      juniper.apstra.apstra_facts:
         id: "{{ register_bp.id }}"
         auth_token: "{{ auth.token }}"
         gather_network_facts:
@@ -252,7 +252,7 @@
         var: ip_pools
 
     - name: Update resource_group
-      junipernetworks.apstra.resource_group:
+      juniper.apstra.resource_group:
         id:
           blueprint: "{{ register_bp.id.blueprint }}"
           group_type: "ip"
@@ -285,7 +285,7 @@
 
   rescue:        
     - name: Unlock the bluprint as task is failed
-      junipernetworks.apstra.blueprint:
+      juniper.apstra.blueprint:
         id: "{{ register_bp.id }}"
         lock_state: "unlocked"
         state: committed
@@ -318,7 +318,7 @@
   
   always:
     - name: Unlock the  blueprint
-      junipernetworks.apstra.blueprint:
+      juniper.apstra.blueprint:
         id: "{{ register_bp.id }}"
         lock_state: "unlocked"
         state: committed
@@ -326,7 +326,7 @@
       register: blueprint_unlock
 
     - name: Commit the blueprint
-      junipernetworks.apstra.blueprint:
+      juniper.apstra.blueprint:
         id: "{{ register_bp.id }}"
         lock_state: "ignore"
         state: committed

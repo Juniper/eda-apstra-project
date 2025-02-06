@@ -36,14 +36,14 @@
     bluprint_label_value: "{{ blueprint_name }}"
 
 - name: Connect to Apstra
-  junipernetworks.apstra.authenticate:
+  juniper.apstra.authenticate:
     verify_certificates: false
     logout: false
   register: auth
 
 - block:
     - name: Get blueprint
-      junipernetworks.apstra.blueprint:
+      juniper.apstra.blueprint:
         body:
           label: "{{ bluprint_label_value }}"
         auth_token: "{{ auth.token }}"
@@ -51,7 +51,7 @@
       register: register_bp
 
     - name: Get security_zone by label
-      junipernetworks.apstra.security_zone:
+      juniper.apstra.security_zone:
         id: "{{ register_bp.id }}"
         body:
           label: "{{ label_value }}"
@@ -59,7 +59,7 @@
       register: sz
 
     - name: Delete the security_zone
-      junipernetworks.apstra.security_zone:
+      juniper.apstra.security_zone:
         id: "{{ sz.id }}"
         state: absent
         auth_token: "{{ auth.token }}"
@@ -67,7 +67,7 @@
 
   rescue:        
     - name: Unlock the blueprint as task is failed
-      junipernetworks.apstra.blueprint:
+      juniper.apstra.blueprint:
         id: "{{ register_bp.id }}"
         lock_state: "unlocked"
         state: committed
@@ -76,7 +76,7 @@
 
   always:
     - name: Unlock the blueprint
-      junipernetworks.apstra.blueprint:
+      juniper.apstra.blueprint:
         id: "{{ register_bp.id }}"
         lock_state: "unlocked"
         state: committed
@@ -84,7 +84,7 @@
       register: blueprint_unlock
 
     - name: Commit the blueprint
-      junipernetworks.apstra.blueprint:
+      juniper.apstra.blueprint:
         id: "{{ register_bp.id }}"
         lock_state: "ignore"
         state: committed

@@ -5,13 +5,13 @@
     bluprint_label_value: "{{ blueprint_name }}"
 
 - name: Connect to Apstra
-  junipernetworks.apstra.authenticate:
+  juniper.apstra.authenticate:
     verify_certificates: false
     logout: false
   register: auth
   
 - name: Get blueprint
-  junipernetworks.apstra.blueprint:
+  juniper.apstra.blueprint:
     body:
       label: "{{ bluprint_label_value }}"
     auth_token: "{{ auth.token }}"
@@ -28,7 +28,7 @@
     deletion_timestamp: "{{ event.resource.metadata.deletionTimestamp | default(None) }}"
 
 - name: Unlock the blueprint
-  junipernetworks.apstra.blueprint:
+  juniper.apstra.blueprint:
     id: "{{ register_bp.id }}"
     lock_state: "unlocked"
     state: committed
@@ -37,7 +37,7 @@
   when: deletion_timestamp == ""
 
 - name: Commit the blueprint
-  junipernetworks.apstra.blueprint:
+  juniper.apstra.blueprint:
     id: "{{ register_bp.id }}"
     lock_state: "ignore"
     state: committed
@@ -52,7 +52,7 @@
     msg: "Deletion timestamp not found: {{ deletion_timestamp }}"
 
 - name: Connect to Apstra
-  junipernetworks.apstra.authenticate:
+  juniper.apstra.authenticate:
     verify_certificates: false
     logout: false
   register: auth
@@ -67,7 +67,7 @@
         vnet_label_value: "{{ (annotations['apstra.juniper.net/vnet'] | regex_search('\"vnetName\": \"([^\"]+)\"', '\\1') | first) | string }}"
 
     - name: Get blueprint
-      junipernetworks.apstra.blueprint:
+      juniper.apstra.blueprint:
         body:
           label: "{{ bluprint_label_value }}"
         auth_token: "{{ auth.token }}"
@@ -75,7 +75,7 @@
       register: register_bp
 
     - name: Get the virtual_network
-      junipernetworks.apstra.virtual_network:
+      juniper.apstra.virtual_network:
         id: "{{ register_bp.id }}"
         body:
           label: "{{ vnet_label_value }}"
@@ -87,7 +87,7 @@
         msg: "{{ vn }}"
         
     - name: Delete the virtual_network
-      junipernetworks.apstra.virtual_network:
+      juniper.apstra.virtual_network:
         id: "{{ vn.id }}" 
         state: absent
         auth_token: "{{ auth.token }}"
@@ -104,7 +104,7 @@
 
   rescue:
     - name: Unlock the blueprint if task fails
-      junipernetworks.apstra.blueprint:
+      juniper.apstra.blueprint:
         id: "{{ register_bp.id }}"
         lock_state: "unlocked"
         state: committed
@@ -113,7 +113,7 @@
 
   always:
     - name: Unlock the blueprint
-      junipernetworks.apstra.blueprint:
+      juniper.apstra.blueprint:
         id: "{{ register_bp.id }}"
         lock_state: "unlocked"
         state: committed
@@ -121,7 +121,7 @@
       register: blueprint_unlock
 
     - name: Commit the blueprint
-      junipernetworks.apstra.blueprint:
+      juniper.apstra.blueprint:
         id: "{{ register_bp.id }}"
         lock_state: "ignore"
         state: committed

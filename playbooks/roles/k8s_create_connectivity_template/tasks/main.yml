@@ -186,7 +186,7 @@
         application_points: "{{ application_points }}"
 
     - name: Connect to Apstra
-      junipernetworks.apstra.authenticate:
+      juniper.apstra.authenticate:
         verify_certificates: false
         logout: false
       register: auth
@@ -224,7 +224,7 @@
         bluprint_label_value: "{{ blueprint_name }}"
       
     - name: Get blueprint
-      junipernetworks.apstra.blueprint:
+      juniper.apstra.blueprint:
         body:
           label: "{{ bluprint_label_value }}"
         auth_token: "{{ auth.token }}"
@@ -242,7 +242,7 @@
       when: annotations['apstra.juniper.net/ep'] is not defined or 'tags' not in annotations['apstra.juniper.net/ep']
 
     - name: Create tags if sz_tags is defined and is a list
-      junipernetworks.apstra.tag:
+      juniper.apstra.tag:
         id: "{{ register_bp.id }}"
         body:
           label: "{{ tag }}"
@@ -254,7 +254,7 @@
         loop_var: tag
 
     - name: Update an endpoint policy application point
-      junipernetworks.apstra.endpoint_policy:
+      juniper.apstra.endpoint_policy:
         id: "{{ register_bp.id }}"
         virtual_network_label: "{{ vnet_label_value }}"
         tags: "{{ sz_tags if sz_tags is not none else omit }}"
@@ -316,7 +316,7 @@
       
   rescue:
     - name: Unlock the  blueprint as task has failed
-      junipernetworks.apstra.blueprint:
+      juniper.apstra.blueprint:
         id: "{{ register_bp.id }}"
         lock_state: "unlocked"
         state: committed
@@ -349,7 +349,7 @@
 
   always:
     - name: Unlock the  blueprint 
-      junipernetworks.apstra.blueprint:
+      juniper.apstra.blueprint:
         id: "{{ register_bp.id }}"
         lock_state: "unlocked"
         state: committed
@@ -357,7 +357,7 @@
       register: blueprint_unlock
 
     - name: Commit the blueprint
-      junipernetworks.apstra.blueprint:
+      juniper.apstra.blueprint:
         id: "{{ register_bp.id }}"
         lock_state: "ignore"
         state: committed

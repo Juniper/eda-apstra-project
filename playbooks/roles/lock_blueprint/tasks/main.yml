@@ -12,13 +12,13 @@
         bluprint_label_value: "{{ blueprint_name }}"
 
     - name: Connect to Apstra
-      junipernetworks.apstra.authenticate:
+      juniper.apstra.authenticate:
         verify_certificates: false
         logout: false
       register: auth
 
     - name: Lock blueprint
-      junipernetworks.apstra.blueprint:
+      juniper.apstra.blueprint:
         body:
           label: "{{ bluprint_label_value }}"
         auth_token: "{{ auth.token }}"
@@ -29,7 +29,7 @@
         msg: "{{ register_bp }}"
 
     - name: Commit the blueprint
-      junipernetworks.apstra.blueprint:
+      juniper.apstra.blueprint:
         id: "{{ register_bp.id }}"
         lock_state: "ignore"
         state: committed
@@ -44,20 +44,20 @@
         bluprint_label_value: "{{ blueprint_name }}"
 
     - name: Connect to Apstra
-      junipernetworks.apstra.authenticate:
+      juniper.apstra.authenticate:
         verify_certificates: false
         logout: false
       register: auth
 
     - name: Lock blueprint
-      junipernetworks.apstra.blueprint:
+      juniper.apstra.blueprint:
         body:
           label: "{{ bluprint_label_value }}"
         auth_token: "{{ auth.token }}"
       register: register_bp
 
     - name: Commit the blueprint
-      junipernetworks.apstra.blueprint:
+      juniper.apstra.blueprint:
         id: "{{ register_bp.id }}"
         lock_state: "ignore"
         state: committed
@@ -72,20 +72,20 @@
         bluprint_label_value: "{{ blueprint_name }}"
 
     - name: Connect to Apstra
-      junipernetworks.apstra.authenticate:
+      juniper.apstra.authenticate:
         verify_certificates: false
         logout: false
       register: auth
       
     - name: Lock blueprint
-      junipernetworks.apstra.blueprint:
+      juniper.apstra.blueprint:
         body:
           label: "{{ bluprint_label_value }}"
         auth_token: "{{ auth.token }}"
       register: register_bp
 
     - name: Commit the blueprint
-      junipernetworks.apstra.blueprint:
+      juniper.apstra.blueprint:
         id: "{{ register_bp.id }}"
         lock_state: "ignore"
         state: committed
