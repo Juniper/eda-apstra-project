@@ -1,0 +1,192 @@
+---
+## Create token for Tower
+- name: Create a new token using username/password
+  awx.awx.token:
+    controller_host: "{{ automation_controller_host }}"
+    controller_username: "{{ automation_controller_username }}"
+    controller_password: "{{ automation_controller_password }}"
+    description: "new token automated"
+    scope: "write"
+    state: present
+    validate_certs: false
+  register: token_result
+
+## Create cretdential using Tower token for EDA
+- name: Create RH AAP credential
+  ansible.eda.credential:
+    controller_host: "{{ eda_controller_host }}"
+    controller_username: "{{ eda_controller_username }}"
+    controller_password: "{{ eda_controller_password }}"
+    name: "rhaap-token"
+    description: "token for rh aap"
+    inputs:
+      host: "{{ controller_api }}"
+      oauth_token: "{{ ansible_facts.controller_token.token }}"
+    credential_type_name: "Red Hat Ansible Automation Platform"
+    organization_name: Default
+    validate_certs: false
+
+## Create Project for EDA
+- name: Create EDA Projects
+  ansible.eda.project:
+    controller_host: "{{ eda_controller_host }}"
+    controller_username: "{{ eda_controller_username }}"
+    controller_password: "{{ eda_controller_password }}"
+    name: "apstra-eda-project"
+    description: "Apstra eda project"
+    url: "{{ project_url }}"
+    organization_name: "{{ organization_name }}"
+    state: present
+    validate_certs: false
+
+## Create decision environment for EDA
+- name: Create EDA Decision Environment
+  ansible.eda.decision_environment:
+    controller_host: "{{ eda_controller_host }}"
+    controller_username: "{{ eda_controller_username }}"
+    controller_password: "{{ eda_controller_password }}"
+    name: "apstra-eda-de"
+    description: "Apstra Decision Environment"
+    image_url: "{{ decision_environment_image_url }}"
+    organization_name: "{{ organization_name }}"
+    state: present
+    validate_certs: false
+
+## Create Rulebook Activation for EDA
+- name: Create a rulebook activation
+  ansible.eda.rulebook_activation:
+    controller_host: "{{ eda_controller_host }}"
+    controller_username: "{{ eda_controller_username }}"
+    controller_password: "{{ eda_controller_password }}"
+    name: "apstra-rulebook-activation"
+    description: "Example Rulebook Activation description"
+    project_name: "apstra-eda-project"
+    rulebook_name: "juniper-apstra-eda-rule.yaml"
+    decision_environment_name: "apstra-eda-de"
+    eda_credentials: "rhaap-token"
+    extra_vars: "blueprint_name: {{ apstra_blueprint_name }}"
+    enabled: true
+    state: present
+    organization_name: "{{ organization_name }}"
+    validate_certs: false
+
+## Create Credential Type in Automation Controller
+- name: Add Credentials Type Apstra Juniper
+  awx.awx.credential_type:
+    controller_host: "{{ automation_controller_host }}"
+    controller_username: "{{ automation_controller_username }}"
+    controller_password: "{{ automation_controller_password }}"
+    name: "Apstra Juniper"
+    description: "Apstra API and Credetials"
+    inputs: "{{ lookup('file', 'files/cred_input_config.json') }}"        
+    injectors: "{{ lookup('file', 'files/cred_injector_config.json') }}"
+    validate_certs: false
+    kind: "cloud"
+
+## Create Credentials in Automation Controller
+- name: Add Apstra Juniper Credential
+  awx.awx.credential:
+    controller_host: "{{ automation_controller_host }}"
+    controller_username: "{{ automation_controller_username }}"
+    controller_password: "{{ automation_controller_password }}"
+    name: "apstra-cred"
+    description: "credentials for apstra"
+    credential_type: "Apstra Juniper"
+    inputs:
+      api_url: "{{ apstra_api_url }}"
+      username: "{{ apstra_username }}"
+      password: "{{ apstra_password }}"
+    validate_certs: false
+    organization: "{{ organization_name }}"
+
+- name: Add OpenShift or Kubernetes API Bearer Token Credential
+  awx.awx.credential:
+    controller_host: "{{ automation_controller_host }}"
+    controller_username: "{{ automation_controller_username }}"
+    controller_password: "{{ automation_controller_password }}"
+    name: "apstra-openshift-cred"
+    description: "credentials for OpenShift cluster"
+    credential_type: "OpenShift or Kubernetes API Bearer Token"
+    validate_certs: false
+    organization: "{{ organization_name }}"
+    inputs:
+      host: "{{ openshift_host }}"
+      bearer_token: "{{ lookup('file', 'files/openshift-sa.token') }}"
+      verify_ssl: false 
+      ssl_ca_cert: "{{ lookup('file', 'files/openshift-ca.crt') }}"
+
+
+## Create Inventory in Automation Controller
+- name: Add Inventory to Controller Instance
+  awx.awx.inventory:
+    controller_host: "{{ automation_controller_host }}"
+    controller_username: "{{ automation_controller_username }}"
+    controller_password: "{{ automation_controller_password }}"
+    name: "Apstra Inventory"
+    description: "Inventory for Apstra EDA"
+    organization: "{{ organization_name }}"
+    state: present
+    instance_groups: ["default","controlplane"]
+    validate_certs: false
+
+
+## Create Execution Environment in Automation Controller
+- name: Add EE to the Controller Instance
+  awx.awx.execution_environment:
+    controller_host: "{{ automation_controller_host }}"
+    controller_username: "{{ automation_controller_username }}"
+    controller_password: "{{ automation_controller_password }}"
+    name: "apstra-ee"
+    image: "{{ execution_environment_image_url }}"
+    validate_certs: false
+
+## Create Project in in Automation Controller
+- name: Add a Project in Automation Controller
+  tower_project:
+    controller_host: "{{ automation_controller_host }}"
+    controller_username: "{{ automation_controller_username }}"
+    controller_password: "{{ automation_controller_password }}"
+    name: "apstra-eda-project"
+    description: "Foo bar project"
+    organization: "{{ organization_name }}"
+    scm_type: "git"
+    scm_url: "{{ project_url }}"
+    default_environment: "apstra-ee"
+    scm_branch: "{{ project_scm_branch }}"
+    state: present
+    validate_certs: false
+
+# Create Job Templates in Automation Controller
+- name: Create Security Zone Job Template
+  tower_job_template:
+    controller_host: "{{ automation_controller_host }}"
+    controller_username: "{{ automation_controller_username }}"
+    controller_password: "{{ automation_controller_password }}"
+    name: "create-vrf"
+    description: "create securityzone/vrf in Apstra"
+    job_type: "run"
+    inventory: "Apstra Inventory"
+    project: "apstra-eda-project"
+    playbook: "playbooks/create-sz-playbook.yml"
+    state: "present"
+    validate_certs: false
+    credentials: ["apstra-cred","apstra-openshift-cred"]
+    execution_environment: "apstra-ee"
+    ask_variables_on_launch: true
+- name: Create Delete Security Zone Job Template
+  tower_job_template:
+    controller_host: "{{ automation_controller_host }}"
+    controller_username: "{{ automation_controller_username }}"
+    controller_password: "{{ automation_controller_password }}"
+    name: "delete-vrf"
+    description: "delete securityzone/vrf in Apstra"
+    job_type: "run"
+    inventory: "Apstra Inventory"
+    project: "apstra-eda-project"
+    playbook: "playbooks/delete-sz-playbook.yml"
+    state: "present"
+    validate_certs: false
+    credentials: ["apstra-cred","apstra-openshift-cred"]
+    execution_environment: "apstra-ee"
+    ask_variables_on_launch: true
+

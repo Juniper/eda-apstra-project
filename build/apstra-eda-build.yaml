@@ -1,0 +1,6 @@
+---
+- name: Configure Ansible Automation Platform for Apstra EDA
+  hosts: localhost
+  gather_facts: false
+  roles:
+    - role: apstra-aap-configure
