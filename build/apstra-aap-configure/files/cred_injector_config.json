@@ -1,0 +1,10 @@
+{
+  "env": {
+    "APSTRA_API_URL": "{{ api_url }}",
+    "APSTRA_PASSWORD": "{{ password }}",
+    "APSTRA_USERNAME": "{{ username }}",
+    "APSTRA_VERIFY_CERTIFICATES": "{{ verify_certificates }}"
+  },
+  "file": {},
+  "extra_vars": {}
+}
