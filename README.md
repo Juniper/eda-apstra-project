@@ -38,7 +38,7 @@ Make sure the nodenetworkstate for each node lldp should be enabled.
         enabled: true
 ```
 
-2. Chnage the interfaces and apply below yaml for NodeNetworkConfigurationPolicy.
+2. Change the interfaces and apply below yaml for NodeNetworkConfigurationPolicy.
 
 ```yaml
 apiVersion: nmstate.io/v1
