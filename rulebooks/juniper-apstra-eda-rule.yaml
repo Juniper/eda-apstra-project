@@ -8,6 +8,7 @@
             kind: Namespace
           - api_version: sriovnetwork.openshift.io/v1
             kind: SriovNetwork
+            label_selectors: ["type=eda"]
             ignore_modified_deleted: True
             changed_fields:
               - spec.vlan
@@ -20,6 +21,19 @@
       action:
         run_job_template:
           name: create-vrf
+          organization: Default
+          job_args:
+            extra_vars: 
+              ns: "{{ event.resource.metadata.name }}"
+              annotate: "{{ event.resource.metadata.annotations }}"
+              ev: "{{ event }}"
+              bp: "{{ blueprint_name }}"
+
+    - name: Event for SRIOV Network add
+      condition: event.type == "ADDED" and event.resource.kind == "SriovNetwork"
+      action:
+        run_job_template:
+          name: create-vnet
           organization: Default
           job_args:
             extra_vars: 
