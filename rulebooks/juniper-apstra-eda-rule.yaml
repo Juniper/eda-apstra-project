@@ -80,9 +80,3 @@
               annotate: "{{ event.resource.metadata.annotations }}"
               ev: "{{ event }}"
               bp: "{{ blueprint_name }}"
-
-    - name: Existing Namespaces
-      condition: event.type == "INIT_DONE" and event.resources.kind == "NamespaceList"
-      action:
-        debug:
-          msg: "INIT_DONE: Namespaces: {{ event.resources }}"
