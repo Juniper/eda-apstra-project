@@ -1,8 +1,5 @@
 TAG ?= latest
 
-# Get all .py files in the EDA_COLLECTION_ROOT directory
-PY_FILES := $(shell find $(EDA_COLLECTION_ROOT) -name *.py)
-
 PY_VERSION := $(shell cat .python-version)
 
 .PHONY: setup clean-pipenv pipenv
