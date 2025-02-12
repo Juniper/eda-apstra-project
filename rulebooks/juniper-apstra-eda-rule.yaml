@@ -92,3 +92,16 @@
               annotate: "{{ event.resource.metadata.annotations }}"
               ev: "{{ event }}"
               bp: "{{ blueprint_name }}"
+
+    - name: Event for sriovnet modify
+      condition: event.type == "MODIFIED" and event.resource.metadata.labels.type == eda and event.resource.kind == SriovNetwork
+      action:
+        run_job_template:
+          name: create-vnet
+          organization: Default
+          job_args:
+            extra_vars:
+              ns: "{{ event.resource.metadata.name }}"
+              annotate: "{{ event.resource.metadata.annotations }}"
+              ev: "{{ event }}"
+              bp: "{{ blueprint_name }}"
