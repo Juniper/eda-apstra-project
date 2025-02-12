@@ -81,7 +81,7 @@
               bp: "{{ blueprint_name }}"
 
     - name: Event for PoD delete
-      condition: event.type == "DELETED" and event.resource.metadata.labels.type == eda and event.resource.kind == Pod
+      condition: event.type == "DELETED" and event.resource.kind == Pod
       action:
         run_job_template:
           name: delete-connectivity-template
