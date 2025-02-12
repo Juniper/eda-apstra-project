@@ -29,6 +29,19 @@
               ev: "{{ event }}"
               bp: "{{ blueprint_name }}"
 
+    - name: Multi event for sriovnet add
+      condition: event.type == "ADDED" and event.resource.metadata.labels.type == "eda" and event.resource.kind == "SriovNetwork"
+      action:
+        run_job_template:
+          name: create-vnet
+          organization: Default
+          job_args:
+            extra_vars:
+              ns: "{{ event.resource.metadata.name }}"
+              annotate: "{{ event.resource.metadata.annotations }}"
+              ev: "{{ event }}"
+              bp: "{{ blueprint_name }}"
+
     - name: Event for PoD add
       condition: event.type == "ADDED" and event.resource.metadata.labels.type == "eda" and event.resource.kind == "Pod"
       action:
@@ -41,21 +54,3 @@
               annotate: "{{ event.resource.metadata.annotations }}"
               ev: "{{ event }}"
               bp: "{{ blueprint_name }}"
-
-    - name: Existing Namespaces
-      condition: event.type == "INIT_DONE" and event.resources.kind == "NamespaceList"
-      action:
-        debug:
-          msg: "INIT_DONE: Namespaces: {{ event.resources }}"
-
-    - name: Namespace Added/Modified/Deleted
-      condition: event.resource.kind == "Namespace"
-      action:
-        debug:
-          msg: "{{ event.type }}: Namespace {{ event.resource.metadata.name }}"
-
-    - name: Existing Pods
-      condition: event.type == "INIT_DONE" and event.resources.kind == "PodList"
-      action:
-        debug:
-          msg: "INIT_DONE: Pods: {{ event.resources }}"
