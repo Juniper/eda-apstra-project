@@ -9,7 +9,7 @@
           - api_version: sriovnetwork.openshift.io/v1
             kind: SriovNetwork
             label_selectors: ["type=eda"]
-            ignore_modified_deleted: True
+            ignore_modified_deleted: true
             changed_fields:
               - spec.vlan
           - api_version: v1
