@@ -2,3 +2,4 @@
 .venv
 *.whl
 *.tar.gz
+.lock
