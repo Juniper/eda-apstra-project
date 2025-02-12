@@ -93,8 +93,15 @@
               ev: "{{ event }}"
               bp: "{{ blueprint_name }}"
 
-    - name: Existing Namespaces
-      condition: event.type == "INIT_DONE" and event.resources.kind == "NamespaceList"
+    - name: Event for sriovnet update
+      condition: event.type == "MODIFIED" and event.resource.metadata.labels.type == eda and event.resource.kind == SriovNetwork
       action:
-        debug:
-          msg: "INIT_DONE: Namespaces: {{ event.resources }}"
+        run_job_template:
+          name: create-vnet
+          organization: Default
+          job_args:
+            extra_vars:
+              ns: "{{ event.resource.metadata.name }}"
+              annotate: "{{ event.resource.metadata.annotations }}"
+              ev: "{{ event }}"
+              bp: "{{ blueprint_name }}"
