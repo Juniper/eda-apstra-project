@@ -10,14 +10,14 @@
           - api_version: sriovnetwork.openshift.io/v1
             kind: SriovNetwork
             log_level: DEBUG
-            ignore_modified_deleted: True
+            ignore_modified_deleted: true
             changed_fields:
               - spec.vlan
           - api_version: v1
             kind: Pod
             log_level: DEBUG
             label_selectors: ["type=eda"]
-  rules:       
+  rules:
     - name: Multi event for ns add
       condition: event.type == "ADDED" and event.resource.metadata.labels.type == eda and event.resource.kind == Namespace
       action:
@@ -25,7 +25,7 @@
           name: create-vrf
           organization: Default
           job_args:
-            extra_vars: 
+            extra_vars:
               ns: "{{ event.resource.metadata.name }}"
               annotate: "{{ event.resource.metadata.annotations }}"
               ev: "{{ event }}"
@@ -38,7 +38,7 @@
           name: create-vnet
           organization: Default
           job_args:
-            extra_vars: 
+            extra_vars:
               ns: "{{ event.resource.metadata.name }}"
               annotate: "{{ event.resource.metadata.annotations }}"
               ev: "{{ event }}"
@@ -51,7 +51,7 @@
           name: create-connectivity-template
           organization: Default
           job_args:
-            extra_vars: 
+            extra_vars:
               ns: "{{ event.resource.metadata.name }}"
               annotate: "{{ event.resource.metadata.annotations }}"
               ev: "{{ event }}"
@@ -64,7 +64,7 @@
           name: delete-vrf
           organization: Default
           job_args:
-            extra_vars: 
+            extra_vars:
               ns: "{{ event.resource.metadata.name }}"
               annotate: "{{ event.resource.metadata.annotations }}"
               ev: "{{ event }}"
@@ -77,20 +77,20 @@
           name: delete-vnet
           organization: Default
           job_args:
-            extra_vars: 
+            extra_vars:
               ns: "{{ event.resource.metadata.name }}"
               annotate: "{{ event.resource.metadata.annotations }}"
               ev: "{{ event }}"
               bp: "{{ blueprint_name }}"
 
-    - name: Trigger action on PoD Deletion 
+    - name: Trigger action on PoD Deletion
       condition: event.type == "DELETED" and event.resource.metadata.labels.type == eda and event.resource.kind == Pod
       action:
         run_job_template:
           name: delete-connectivity-template
           organization: Default
           job_args:
-            extra_vars: 
+            extra_vars:
               ns: "{{ event.resource.metadata.name }}"
               annotate: "{{ event.resource.metadata.annotations }}"
               ev: "{{ event }}"
@@ -103,10 +103,10 @@
           name: create-vnet
           organization: Default
           job_args:
-            extra_vars: 
+            extra_vars:
               ns: "{{ event.resource.metadata.name }}"
               annotate: "{{ event.resource.metadata.annotations }}"
-              ev: "{{ event }}" 
+              ev: "{{ event }}"
               bp: "{{ blueprint_name }}"
 
     - name: INIT_DONE event
@@ -116,6 +116,6 @@
           name: init-done
           organization: Default
           job_args:
-            extra_vars: 
+            extra_vars:
               init_ev: "{{ event }}"
               bp: "{{ blueprint_name }}"
