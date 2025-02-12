@@ -29,19 +29,19 @@
         debug:
           msg: "INIT_DONE: Pods: {{ event.resources }}"
 
-    - name: Pod Added/Modified/Deleted
+    - name: Pod Added/Modified/Deleted without type
       condition: event.resource.kind == "Pod"
       action:
         debug:
           msg: "{{ event.type }}: Pod {{ event.resource.metadata.namespace }}/{{ event.resource.metadata.name }} with labels {{ event.resource.metadata.labels }}"
 
-    - name: Pod Added/Modified/Deleted
+    - name: Pod Added/Modified/Deleted with type eda
       condition: event.resource.kind == "Pod" and event.resource.metadata.labels.type == eda
       action:
         debug:
           msg: "{{ event.type }}: Pod {{ event.resource.metadata.namespace }}/{{ event.resource.metadata.name }} with labels {{ event.resource.metadata.labels }}"
 
-    - name: Pod Added/Modified/Deleted
+    - name: Pod Added/Modified/Deleted with type juniper
       condition: event.resource.kind == "Pod" and event.resource.metadata.labels.type == juniper
       action:
         debug:
