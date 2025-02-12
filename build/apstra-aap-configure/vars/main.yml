@@ -11,13 +11,13 @@ openshift_host: "https://api.ocpapstra-lab.englab.juniper.net:6443"
 # Ansible Automation Controller(Ansible Tower) Configuration
 automation_controller_host: "https://aap-controller-aap.apps.ocpapstra-lab.englab.juniper.net/"
 automation_controller_username: "admin"
-automation_controller_password: "PBegRWzANw6mW3gdp9U7ZV0xB5NhuPRA"
+automation_controller_password: ""
 execution_environment_image_url: "s-artifactory.juniper.net/atom-docker/ee/apstra-ee:0.1.32"
 
 # Ansible Automation Decisions(Ansible EDA) Configuration
 eda_controller_host: "https://aap-eda-aap.apps.ocpapstra-lab.englab.juniper.net/"
 eda_controller_username: "admin"
-eda_controller_password: "5LcOBIb93zEvkgLpo5zJAo2p2Ok9yGEG"
+eda_controller_password: ""
 
 controller_api: "https://aap-aap.apps.ocpapstra-lab.englab.juniper.net/api/controller/"
 decision_environment_image_url: "s-artifactory.juniper.net/atom-docker/de/juniper-k8s-de:1.4.1"
@@ -25,6 +25,6 @@ decision_environment_image_url: "s-artifactory.juniper.net/atom-docker/de/junipe
 # Apstra Variables
 apstra_api_url: "https://10.87.2.74/api"
 apstra_username: "admin"
-apstra_password: "Apstramarvis@123"
+apstra_password: ""
 
 
