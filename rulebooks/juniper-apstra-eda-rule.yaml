@@ -1,19 +1,65 @@
 ---
-- name: Listen for ConfigMaps across
+- name: Listen for newly created Namespace
   hosts: all
   sources:
     - juniper.eda.k8s:
-        api_version: v1
-        kind: ConfigMap
-  rules:
-    - name: Existing ConfigMaps
-      condition: event.type == "INIT_DONE" and event.resources.kind == "ConfigMapList"
+        log_level: DEBUG
+        kinds:
+          - api_version: v1
+            kind: Namespace
+          - api_version: sriovnetwork.openshift.io/v1
+            kind: SriovNetwork
+            ignore_modified_deleted: True
+            changed_fields:
+              - spec.vlan
+          - api_version: v1
+            kind: Pod
+            label_selectors: ["type=eda"]
+  rules:       
+    - name: Multi event for ns add
+      condition: event.type == "ADDED" and event.resource.metadata.labels.type == eda and event.resource.kind == Namespace
       action:
         debug:
-          msg: "INIT_DONE: ConfigMaps: {{ event.resources }}"
+          msg: "ADDED: ns {{ event.resource.metadata.namespace }}/{{ event.resource.metadata.name }}"
 
-    - name: ConfigMap Added
-      condition: event.type == "ADDED"
+    - name: Multi event for sriovnet add
+      condition: event.type == "ADDED" and event.resource.metadata.labels.type == eda and event.resource.kind == SriovNetwork
       action:
         debug:
-          msg: "ADDED: ConfigMap {{ event.resource.metadata.namespace }}/{{ event.resource.metadata.name }}"
+          msg: "ADDED: Sriovnet {{ event.resource.metadata.namespace }}/{{ event.resource.metadata.name }}"
+
+    - name: Multi event for Pod add
+      condition: event.type == "ADDED" and event.resource.metadata.labels.type == eda and event.resource.kind == Pod
+      action:
+        debug:
+          msg: "ADDED: Pod {{ event.resource.metadata.namespace }}/{{ event.resource.metadata.name }}"
+
+    - name: Trigger action on Namespace deletion with specific annotation
+      condition: event.type == "DELETED" and event.resource.metadata.labels.type == eda and event.resource.kind == Namespace
+      action:
+        debug:
+          msg: "Delete: NS {{ event.resource.metadata.namespace }}/{{ event.resource.metadata.name }}"
+
+    - name: Trigger action on SriovNetwork deletion with specific annotation
+      condition: event.type == "DELETED" and event.resource.metadata.labels.type == eda and event.resource.kind == SriovNetwork
+      action:
+        debug:
+          msg: "Deleted: sriovnet {{ event.resource.metadata.namespace }}/{{ event.resource.metadata.name }}"
+
+    - name: Trigger action on PoD Deletion 
+      condition: event.type == "DELETED" and event.resource.metadata.labels.type == eda and event.resource.kind == Pod
+      action:
+        debug:
+          msg: "Deleted: Pod {{ event.resource.metadata.namespace }}/{{ event.resource.metadata.name }}"
+
+    - name: Trigger action on  SriovNetwork update with specific annotation
+      condition: event.type == "MODIFIED" and event.resource.metadata.labels.type == eda and event.resource.kind == SriovNetwork
+      action:
+        debug:
+          msg: "Modified: sriovnet {{ event.resource.metadata.namespace }}/{{ event.resource.metadata.name }}"
+
+    - name: INIT_DONE event
+      condition: event.type == "INIT_DONE"
+      action:
+        debug:
+          msg: "init-done: {{ event.resource.metadata.namespace }}/{{ event.resource.metadata.name }}"
