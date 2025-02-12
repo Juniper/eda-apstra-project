@@ -28,7 +28,7 @@
               ev: "{{ event }}"
               bp: "{{ blueprint_name }}"
 
-    - name: Multi event for sriovnet add
+    - name: Event for sriovnet add
       condition: event.type == "ADDED" and event.resource.metadata.labels.type == eda and event.resource.kind == SriovNetwork
       action:
         run_job_template:
@@ -54,7 +54,7 @@
               ev: "{{ event }}"
               bp: "{{ blueprint_name }}"
 
-    - name: Event for PoD delete
+    - name: Event for NS delete
       condition: event.type == "DELETED" and event.resource.metadata.labels.type == eda and event.resource.kind == Namespace
       action:
         run_job_template:
@@ -78,4 +78,41 @@
               ns: "{{ event.resource.metadata.name }}"
               annotate: "{{ event.resource.metadata.annotations }}"
               ev: "{{ event }}"
+              bp: "{{ blueprint_name }}"
+
+    - name: Event for PoD delete
+      condition: event.type == "DELETED" and event.resource.metadata.labels.type == eda and event.resource.kind == Pod
+      action:
+        run_job_template:
+          name: delete-connectivity-template
+          organization: Default
+          job_args:
+            extra_vars:
+              ns: "{{ event.resource.metadata.name }}"
+              annotate: "{{ event.resource.metadata.annotations }}"
+              ev: "{{ event }}"
+              bp: "{{ blueprint_name }}"
+
+    - name: Event for sriovnet modify
+      condition: event.type == "MODIFIED" and event.resource.metadata.labels.type == eda and event.resource.kind == SriovNetwork
+      action:
+        run_job_template:
+          name: create-vnet
+          organization: Default
+          job_args:
+            extra_vars:
+              ns: "{{ event.resource.metadata.name }}"
+              annotate: "{{ event.resource.metadata.annotations }}"
+              ev: "{{ event }}"
+              bp: "{{ blueprint_name }}"
+
+    - name: Event for init-done
+      condition: event.type == "INIT_DONE"
+      action:
+        run_job_template:
+          name: init-done
+          organization: Default
+          job_args:
+            extra_vars:
+              init_ev: "{{ event }}"
               bp: "{{ blueprint_name }}"
