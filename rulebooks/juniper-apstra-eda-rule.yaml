@@ -15,11 +15,37 @@
             kind: Pod
             label_selectors: ["type=eda"]
   rules:
-    - name: Event for EDA Namespace
+    - name: Event for EDA Namespace add
       condition: event.type == "ADDED" and event.resource.metadata.labels.type == "eda" and event.resource.kind == "Namespace"
       action:
         run_job_template:
           name: create-vrf
+          organization: Default
+          job_args:
+            extra_vars: 
+              ns: "{{ event.resource.metadata.name }}"
+              annotate: "{{ event.resource.metadata.annotations }}"
+              ev: "{{ event }}"
+              bp: "{{ blueprint_name }}"
+
+    - name: Event for SRIOV Network add
+      condition: event.type == "ADDED" and event.resource.metadata.labels.type == "eda" and event.resource.kind == "SriovNetwork"
+      action:
+        run_job_template:
+          name: create-vnet
+          organization: Default
+          job_args:
+            extra_vars: 
+              ns: "{{ event.resource.metadata.name }}"
+              annotate: "{{ event.resource.metadata.annotations }}"
+              ev: "{{ event }}"
+              bp: "{{ blueprint_name }}"
+
+    - name: Event for PoD add
+      condition: event.type == "ADDED" and event.resource.metadata.labels.type == "eda" and event.resource.kind == "Pod"
+      action:
+        run_job_template:
+          name: create-connectivity-template
           organization: Default
           job_args:
             extra_vars: 
@@ -45,16 +71,3 @@
       action:
         debug:
           msg: "INIT_DONE: Pods: {{ event.resources }}"
-
-    - name: Pod Added/Modified/Deleted
-      condition: event.resource.kind == "Pod"
-      action:
-        run_job_template:
-          name: create-connectivity-template
-          organization: Default
-          job_args:
-            extra_vars: 
-              ns: "{{ event.resource.metadata.name }}"
-              annotate: "{{ event.resource.metadata.annotations }}"
-              ev: "{{ event }}"
-              bp: "{{ blueprint_name }}"
