@@ -30,15 +30,8 @@ Useful documentation:
 
 There are two steps to enable lldp configuration on node using NMState.
 
-1. Enable lldp at node level
 
-Make sure the nodenetworkstate for each node lldp should be enabled.
-```yaml
-      lldp:
-        enabled: true
-```
-
-2. Change the interfaces and apply below yaml for NodeNetworkConfigurationPolicy.
+1. Chnage the interfaces and apply below yaml for NodeNetworkConfigurationPolicy.
 
 ```yaml
 apiVersion: nmstate.io/v1
@@ -47,7 +40,7 @@ metadata:
   name: lldp-node-policy 
 spec:
   nodeSelector: 
-    node-role.kubernetes.io/worker: "" 
+    node-role.kubernetes.io/worker: ""   # Label the node role worker node if not already
   maxUnavailable: 3 
   desiredState:
     interfaces:
@@ -59,6 +52,17 @@ spec:
         type: ethernet
         lldp:
           enabled: true
+```
+
+2. Check the NodeNetworkState and see lldp neighbours are visible using below command.
+
+``` 
+kubectl get NodeNetworkState <nodeName> -o yaml
+
+```yaml
+      lldp:
+        enabled: true
+        neighbors:
 ```
 
 ---

@@ -33,7 +33,6 @@
     controller_username: "{{ eda_controller_username }}"
     controller_password: "{{ eda_controller_password }}"
     name: "apstra-eda-project"
-    description: "Apstra eda project"
     url: "{{ project_url }}"
     organization_name: "{{ organization_name }}"
     state: present
@@ -190,3 +189,87 @@
     execution_environment: "apstra-ee"
     ask_variables_on_launch: true
 
+- name: Create Virtual Network Job Template
+  tower_job_template:
+    controller_host: "{{ automation_controller_host }}"
+    controller_username: "{{ automation_controller_username }}"
+    controller_password: "{{ automation_controller_password }}"
+    name: "create-vnet"
+    description: "create virtual network in Apstra"
+    job_type: "run"
+    inventory: "Apstra Inventory"
+    project: "apstra-eda-project"
+    playbook: "playbooks/create-vnet-playbook.yml"
+    state: "present"
+    validate_certs: false
+    credentials: ["apstra-cred","apstra-openshift-cred"]
+    execution_environment: "apstra-ee"
+    ask_variables_on_launch: true
+
+- name: Delete Virtual Network Job Template
+  tower_job_template:
+    controller_host: "{{ automation_controller_host }}"
+    controller_username: "{{ automation_controller_username }}"
+    controller_password: "{{ automation_controller_password }}"
+    name: "delete-vnet"
+    description: "delete virtual network in Apstra"
+    job_type: "run"
+    inventory: "Apstra Inventory"
+    project: "apstra-eda-project"
+    playbook: "playbooks/delete-vnet-playbook.yml"
+    state: "present"
+    validate_certs: false
+    credentials: ["apstra-cred","apstra-openshift-cred"]
+    execution_environment: "apstra-ee"
+    ask_variables_on_launch: true
+
+- name: Create Connectivity Template Job Template
+  tower_job_template:
+    controller_host: "{{ automation_controller_host }}"
+    controller_username: "{{ automation_controller_username }}"
+    controller_password: "{{ automation_controller_password }}"
+    name: "create-connectivity-template"
+    description: "Create connecitivity template in Apstra"
+    job_type: "run"
+    inventory: "Apstra Inventory"
+    project: "apstra-eda-project"
+    playbook: "playbooks/pod-create-playbook.yml"
+    state: "present"
+    validate_certs: false
+    credentials: ["apstra-cred","apstra-openshift-cred"]
+    execution_environment: "apstra-ee"
+    ask_variables_on_launch: true
+
+- name: Delete Connectivity Template Job Template
+  tower_job_template:
+    controller_host: "{{ automation_controller_host }}"
+    controller_username: "{{ automation_controller_username }}"
+    controller_password: "{{ automation_controller_password }}"
+    name: "delete-connectivity-template"
+    description: "delete connectivity template in Apstra"
+    job_type: "run"
+    inventory: "Apstra Inventory"
+    project: "apstra-eda-project"
+    playbook: "playbooks/delete-pod-playbook.yml"
+    state: "present"
+    validate_certs: false
+    credentials: ["apstra-cred","apstra-openshift-cred"]
+    execution_environment: "apstra-ee"
+    ask_variables_on_launch: true
+
+- name: Create Init Done Job Template
+  tower_job_template:
+    controller_host: "{{ automation_controller_host }}"
+    controller_username: "{{ automation_controller_username }}"
+    controller_password: "{{ automation_controller_password }}"
+    name: "init-done"
+    description: "sync all the objects in Apstra"
+    job_type: "run"
+    inventory: "Apstra Inventory"
+    project: "apstra-eda-project"
+    playbook: "playbooks/init-done-playbook.yml"
+    state: "present"
+    validate_certs: false
+    credentials: ["apstra-cred","apstra-openshift-cred"]
+    execution_environment: "apstra-ee"
+    ask_variables_on_launch: true

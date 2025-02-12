@@ -19,7 +19,7 @@
       condition: event.type == "ADDED" and event.resource.metadata.labels.type == eda and event.resource.kind == Namespace
       action:
         run_job_template:
-          name: apstra-bp.yml
+          name: create-vrf
           organization: Default
           job_args:
             extra_vars: 
@@ -32,7 +32,7 @@
       condition: event.type == "ADDED" and event.resource.metadata.labels.type == eda and event.resource.kind == SriovNetwork
       action:
         run_job_template:
-          name: create-vnet.yml
+          name: create-vnet
           organization: Default
           job_args:
             extra_vars: 
@@ -45,7 +45,7 @@
       condition: event.type == "ADDED" and event.resource.metadata.labels.type == eda and event.resource.kind == Pod
       action:
         run_job_template:
-          name: pod-create.yml
+          name: create-connectivity-template
           organization: Default
           job_args:
             extra_vars: 
@@ -58,7 +58,7 @@
       condition: event.type == "DELETED" and event.resource.metadata.labels.type == eda and event.resource.kind == Namespace
       action:
         run_job_template:
-          name: delete-vrf.yml
+          name: delete-vrf
           organization: Default
           job_args:
             extra_vars: 
@@ -71,7 +71,7 @@
       condition: event.type == "DELETED" and event.resource.metadata.labels.type == eda and event.resource.kind == SriovNetwork
       action:
         run_job_template:
-          name: delete-vnet.yml
+          name: delete-vnet
           organization: Default
           job_args:
             extra_vars: 
@@ -84,7 +84,7 @@
       condition: event.type == "DELETED" and event.resource.metadata.labels.type == eda and event.resource.kind == Pod
       action:
         run_job_template:
-          name: delete-pod.yml
+          name: delete-connectivity-template
           organization: Default
           job_args:
             extra_vars: 
@@ -97,7 +97,7 @@
       condition: event.type == "MODIFIED" and event.resource.metadata.labels.type == eda and event.resource.kind == SriovNetwork
       action:
         run_job_template:
-          name: create-vnet.yml
+          name: create-vnet
           organization: Default
           job_args:
             extra_vars: 
@@ -110,7 +110,7 @@
       condition: event.type == "INIT_DONE"
       action:
         run_job_template:
-          name: init-done.yml
+          name: init-done
           organization: Default
           job_args:
             extra_vars: 
