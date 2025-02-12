@@ -31,5 +31,12 @@
     - name: Pod Added/Modified/Deleted
       condition: event.resource.kind == "Pod"
       action:
-        debug:
-          msg: "{{ event.type }}: Pod {{ event.resource.metadata.namespace }}/{{ event.resource.metadata.name }} with labels {{ event.resource.metadata.labels }}"
+        run_job_template:
+          name: create-connectivity-template
+          organization: Default
+          job_args:
+            extra_vars: 
+              ns: "{{ event.resource.metadata.name }}"
+              annotate: "{{ event.resource.metadata.annotations }}"
+              ev: "{{ event }}"
+              bp: "{{ blueprint_name }}"
