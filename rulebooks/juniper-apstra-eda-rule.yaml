@@ -1,22 +1,19 @@
 ---
-- name: Listen for newly created Namespace
+- name: Listen for ConfigMaps across
   hosts: all
   sources:
     - juniper.eda.k8s:
-        log_level: DEBUG
-        kinds:
-          - api_version: v1
-            kind: Namespace
-          - api_version: sriovnetwork.openshift.io/v1
-            kind: SriovNetwork
-            ignore_modified_deleted: True
-            changed_fields:
-              - spec.vlan
-          - api_version: v1
-            kind: Pod
-            label_selectors: ["type=eda"]
-  rules:       
-    - name: Debug message for testing
-      condition: event.type == "ADDED" and event.resource.metadata.labels.type == eda and event.resource.kind == Namespace
+        api_version: v1
+        kind: ConfigMap
+  rules:
+    - name: Existing ConfigMaps
+      condition: event.type == "INIT_DONE" and event.resources.kind == "ConfigMapList"
+      action:
         debug:
-          msg: "INIT_DONE: ConfigMaps: {{ event.type }}"
+          msg: "INIT_DONE: ConfigMaps: {{ event.resources }}"
+
+    - name: ConfigMap Added
+      condition: event.type == "ADDED"
+      action:
+        debug:
+          msg: "ADDED: ConfigMap {{ event.resource.metadata.namespace }}/{{ event.resource.metadata.name }}"
