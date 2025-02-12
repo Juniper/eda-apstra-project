@@ -6,13 +6,16 @@
         kinds:
           - api_version: v1
             kind: Namespace
+            log_level: DEBUG
           - api_version: sriovnetwork.openshift.io/v1
             kind: SriovNetwork
+            log_level: DEBUG
             ignore_modified_deleted: True
             changed_fields:
               - spec.vlan
           - api_version: v1
             kind: Pod
+            log_level: DEBUG
             label_selectors: ["type=eda"]
   rules:       
     - name: Multi event for ns add
