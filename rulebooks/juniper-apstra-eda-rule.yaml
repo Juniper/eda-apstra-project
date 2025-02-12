@@ -8,7 +8,6 @@
             kind: Namespace
           - api_version: sriovnetwork.openshift.io/v1
             kind: SriovNetwork
-            label_selectors: ["type=eda"]
             ignore_modified_deleted: true
             changed_fields:
               - spec.vlan
@@ -17,7 +16,7 @@
             label_selectors: ["type=eda"]
   rules:
     - name: Event for EDA Namespace add
-      condition: event.type == "ADDED" and event.resource.metadata.labels.type == "eda" and event.resource.kind == "Namespace"
+      condition: event.type == "ADDED" and event.resource.metadata.labels.type == eda and event.resource.kind == Namespace
       action:
         run_job_template:
           name: create-vrf
@@ -30,7 +29,7 @@
               bp: "{{ blueprint_name }}"
 
     - name: Multi event for sriovnet add
-      condition: event.type == "ADDED" and event.resource.metadata.labels.type == "eda" and event.resource.kind == "SriovNetwork"
+      condition: event.type == "ADDED" and event.resource.metadata.labels.type == eda and event.resource.kind == SriovNetwork
       action:
         run_job_template:
           name: create-vnet
@@ -43,7 +42,7 @@
               bp: "{{ blueprint_name }}"
 
     - name: Event for PoD add
-      condition: event.type == "ADDED" and event.resource.metadata.labels.type == "eda" and event.resource.kind == "Pod"
+      condition: event.type == "ADDED" and event.resource.metadata.labels.type == eda and event.resource.kind == Pod
       action:
         run_job_template:
           name: create-connectivity-template
@@ -56,7 +55,7 @@
               bp: "{{ blueprint_name }}"
 
     - name: Event for PoD delete
-      condition: event.type == "DELETED" and event.resource.metadata.labels.type == "eda" and event.resource.kind == "Namespace"
+      condition: event.type == "DELETED" and event.resource.metadata.labels.type == eda and event.resource.kind == Namespace
       action:
         run_job_template:
           name: delete-vrf
@@ -69,7 +68,7 @@
               bp: "{{ blueprint_name }}"
 
     - name: Event for sriovnet delete
-      condition: event.type == "DELETED" and event.resource.metadata.labels.type == "eda" and event.resource.kind == "SriovNetwork"
+      condition: event.type == "DELETED" and event.resource.metadata.labels.type == eda and event.resource.kind == SriovNetwork
       action:
         run_job_template:
           name: delete-vnet
