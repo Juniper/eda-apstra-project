@@ -85,7 +85,7 @@
   set_fact:
     all_pci_addresses: >-
       {{
-        interfaces | map(attribute='Vfs') | map('map', attribute='pciAddress') | flatten
+        interfaces | map(attribute='Vfs') | default([]) | map('default', []) | flatten | map(attribute='pciAddress') | list
       }}
 
 - name: Debug all PCI addresses
@@ -140,7 +140,7 @@
   loop_control:
     loop_var: interface
   vars:
-    vfs_with_interface: "{{ interface.Vfs | map('combine', {'interface_name': interface.name}) | list }}"
+    vfs_with_interface: "{{ interface.Vfs | default([]) | map('combine', {'interface_name': interface.name}) | list }}"
 
 - name: Populate the PCI to name map with VF names
   set_fact:
