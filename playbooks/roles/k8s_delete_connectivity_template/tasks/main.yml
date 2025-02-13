@@ -101,7 +101,7 @@
 
 - name: Print interfaces
   ansible.builtin.set_fact:
-    pci_interface: "{{ interfaces | map(attribute='Vfs') | map('map', attribute='pciAddress') | zip(interfaces | map(attribute='name')) | from_yaml }}"
+    pci_interface: "{{ (interfaces | map(attribute='Vfs') | default([]) | map('default', []) | flatten | map(attribute='pciAddress') | zip(interfaces | map(attribute='name')) | list | to_nice_yaml) | from_yaml }}"
 
 - name: Debug pci_interface
   debug:
