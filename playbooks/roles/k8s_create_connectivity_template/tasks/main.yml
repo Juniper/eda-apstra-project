@@ -171,13 +171,21 @@
       debug:
         var: node_portid
 
+    - name: Get the remote host from the node
+      set_fact:
+        remote_host: "{{ remote_interface_json[0].lldp.neighbors[0].system-name }}"
+
+    - name: Debug remote host
+      debug:
+        var: remote_host
+
     - name: Initialize application points
       set_fact:
         application_points: []
 
     - name: Generate application points
       set_fact:
-        application_points: "{{ application_points + [{'if_name': item, 'used': true}] }}"
+        application_points: "{{ application_points + [{'remote_host': remote_host,'if_name': item, 'used': true}] }}"
       loop: "{{ node_portid }}"
       when: item != ''
 
