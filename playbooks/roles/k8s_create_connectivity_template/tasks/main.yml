@@ -78,7 +78,7 @@
       set_fact:
         all_pci_addresses: >-
           {{
-            interfaces | map(attribute='Vfs') | map('map', attribute='pciAddress') | flatten
+            interfaces | map(attribute='Vfs') | default([]) | map('default', []) | flatten | map(attribute='pciAddress') | list
           }}
 
     - name: Debug all PCI addresses
