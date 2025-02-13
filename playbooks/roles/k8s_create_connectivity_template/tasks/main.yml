@@ -103,7 +103,7 @@
       loop_control:
         loop_var: interface
       vars:
-        vfs_with_interface: "{{ interface.Vfs | map('combine', {'interface_name': interface.name}) | list }}"
+        vfs_with_interface: "{{ interface.Vfs | default([]) | map('combine', {'interface_name': interface.name}) | list }}"
 
     - name: Populate the PCI to name map with VF names
       set_fact:
