@@ -106,3 +106,14 @@
               annotate: "{{ event.resource.metadata.annotations }}"
               ev: "{{ event }}"
               bp: "{{ blueprint_name }}"
+
+    - name: Init Done event
+      condition: event.type == "INIT_DONE"
+      action:
+        run_job_template:
+          name: init-done
+          organization: Default
+          job_args:
+            extra_vars:
+              init_ev: "{{ event }}"
+              bp: "{{ blueprint_name }}"
