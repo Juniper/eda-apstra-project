@@ -113,7 +113,7 @@
       {{
         dict(
           interfaces | map(attribute='name') | zip(
-            interfaces |  map(attribute='Vfs') | map('map', attribute='pciAddress') | map('list')
+            interfaces | map(attribute='Vfs') | default([]) | map('default', []) | flatten | map(attribute='pciAddress') | list
           )
         )
       }}
