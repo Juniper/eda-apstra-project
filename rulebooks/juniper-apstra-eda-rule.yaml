@@ -1,24 +1,22 @@
 ---
-- name: Listen for newly created Namespace
+- name: Listen for Namespace or Pod
   hosts: all
   sources:
     - juniper.eda.k8s:
+        heartbeat_interval: 120
         kinds:
           - api_version: v1
             kind: Namespace
-            log_level: DEBUG
           - api_version: sriovnetwork.openshift.io/v1
             kind: SriovNetwork
-            log_level: DEBUG
             ignore_modified_deleted: true
             changed_fields:
               - spec.vlan
           - api_version: v1
             kind: Pod
-            log_level: DEBUG
             label_selectors: ["type=eda"]
   rules:
-    - name: Multi event for ns add
+    - name: Event for EDA Namespace add
       condition: event.type == "ADDED" and event.resource.metadata.labels.type == eda and event.resource.kind == Namespace
       action:
         run_job_template:
@@ -31,7 +29,7 @@
               ev: "{{ event }}"
               bp: "{{ blueprint_name }}"
 
-    - name: Multi event for sriovnet add
+    - name: Event for sriovnet add
       condition: event.type == "ADDED" and event.resource.metadata.labels.type == eda and event.resource.kind == SriovNetwork
       action:
         run_job_template:
@@ -44,7 +42,7 @@
               ev: "{{ event }}"
               bp: "{{ blueprint_name }}"
 
-    - name: Multi event for Pod add
+    - name: Event for PoD add
       condition: event.type == "ADDED" and event.resource.metadata.labels.type == eda and event.resource.kind == Pod
       action:
         run_job_template:
@@ -57,7 +55,7 @@
               ev: "{{ event }}"
               bp: "{{ blueprint_name }}"
 
-    - name: Trigger action on Namespace deletion with specific annotation
+    - name: Event for NS delete
       condition: event.type == "DELETED" and event.resource.metadata.labels.type == eda and event.resource.kind == Namespace
       action:
         run_job_template:
@@ -70,7 +68,7 @@
               ev: "{{ event }}"
               bp: "{{ blueprint_name }}"
 
-    - name: Trigger action on SriovNetwork deletion with specific annotation
+    - name: Event for sriovnet delete
       condition: event.type == "DELETED" and event.resource.metadata.labels.type == eda and event.resource.kind == SriovNetwork
       action:
         run_job_template:
@@ -83,7 +81,7 @@
               ev: "{{ event }}"
               bp: "{{ blueprint_name }}"
 
-    - name: Trigger action on PoD Deletion
+    - name: Event for PoD delete
       condition: event.type == "DELETED" and event.resource.metadata.labels.type == eda and event.resource.kind == Pod
       action:
         run_job_template:
@@ -96,7 +94,7 @@
               ev: "{{ event }}"
               bp: "{{ blueprint_name }}"
 
-    - name: Trigger action on  SriovNetwork update with specific annotation
+    - name: Event for sriovnet modified
       condition: event.type == "MODIFIED" and event.resource.metadata.labels.type == eda and event.resource.kind == SriovNetwork
       action:
         run_job_template:
@@ -109,7 +107,7 @@
               ev: "{{ event }}"
               bp: "{{ blueprint_name }}"
 
-    - name: INIT_DONE event
+    - name: Init Done event
       condition: event.type == "INIT_DONE"
       action:
         run_job_template:
