@@ -282,7 +282,7 @@
 
     - name: Print if name from application_points
       set_fact:
-        if_node_name: "{{ item.if_name | regex_replace('/', '_') | regex_replace('-', '_') | regex_replace(':', '_') }}-{{ node_name }}"
+        if_node_name: "{{ item.if_name | regex_replace('/', '_') | regex_replace('-', '_') | regex_replace(':', '_') }}-{{ node_name }}--{{ remote_host }}"
       with_items: "{{ application_points }}"
 
     - name: Initilize the configmaop port-node is not present
