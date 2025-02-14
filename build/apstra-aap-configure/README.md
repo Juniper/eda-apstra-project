@@ -46,7 +46,7 @@ Files
 | cred_injector_config.json      | No                 | This file requires to create Apstra credential types in Ansible automation platform.                         |
 | cred_input_config.json         | No                 | This file requires to create Apstra credential types in Ansible automation platform.                         |
 | openshift-ca.crt               | yes                | Certificate Authority data for OpenShift Cluster.                                                            |
-| openshift-sa.crt               | yes                | API authentication bearer token of Service Account of OpenShift                                              |
+| openshift-sa.token               | yes                | API authentication bearer token of Service Account of OpenShift                                              |
 
 **Note**
 If you are not aware how to obtain, Certificate Autority data and API authentication bearer token, you may read [this](https://developers.redhat.com/articles/2023/06/26/how-deploy-apps-k8s-cluster-automation-controller#install_and_configure_ansible_automation_platform) article.
