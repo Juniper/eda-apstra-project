@@ -1,9 +1,29 @@
 # delete-pod-playbook.yml
 ---
-- name: Delete pod in Apstra
+- name: Delete Connectivity Template in Apstra
   hosts: localhost
   gather_facts: false
-  roles:
-    - role: lock_blueprint
-    - role: k8s_delete_connectivity_template
-    - role: unlock_blueprint
+  tasks:
+    - name: Lock Blueprint
+      block:
+        - include_role:
+            name: lock_blueprint
+      rescue:
+        - include_role:
+            name: unlock_blueprint
+        - fail:
+            msg: "Lock Blueprint role failed."
+
+    - name: Delete virtual network in Apstra
+      block:
+        - include_role:
+            name: k8s_delete_connectivity_template
+      rescue:
+        - include_role:
+            name: unlock_blueprint
+        - fail:
+            msg: "Delete Connecivity template role failed."
+
+    - name: Unlock Blueprint (if previous roles succeeded)
+      include_role:
+        name: unlock_blueprint

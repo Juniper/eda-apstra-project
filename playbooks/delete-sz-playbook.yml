@@ -1,9 +1,28 @@
-# delete-sz-playbook.yml
 ---
 - name: Delete security zone in Apstra
   hosts: localhost
   gather_facts: false
-  roles:
-    - role: lock_blueprint
-    - role: k8s_delete_security_zone
-    - role: unlock_blueprint
+  tasks:
+    - name: Lock Blueprint
+      block:
+        - include_role:
+            name: lock_blueprint
+      rescue:
+        - include_role:
+            name: unlock_blueprint
+        - fail:
+            msg: "Lock Blueprint role failed."
+
+    - name: Delete K8s Security Zone
+      block:
+        - include_role:
+            name: k8s_delete_security_zone
+      rescue:
+        - include_role:
+            name: unlock_blueprint
+        - fail:
+            msg: "Delete K8s Security Zone role failed."
+
+    - name: Unlock Blueprint (if previous roles succeeded)
+      include_role:
+        name: unlock_blueprint

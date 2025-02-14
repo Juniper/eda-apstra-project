@@ -331,30 +331,6 @@
         auth_token: "{{ auth.token }}"
       register: blueprint_unlock
 
-    - name: Update the label of Pod as failed
-      k8s:
-        state: patched
-        definition:
-          apiVersion: v1
-          kind: Pod
-          metadata:
-            name: "{{ event.resource.metadata.name }}"
-            namespace: "{{ event.resource.metadata.namespace }}"
-            labels:
-              apstraStatus: "failed"
-
-    - name: Remove the label of Pod as failed
-      k8s:
-        state: patched
-        definition:
-          apiVersion: v1
-          kind: Pod
-          metadata:
-            name: "{{ event.resource.metadata.name }}"
-            namespace: "{{ event.resource.metadata.namespace }}"
-            labels:
-              type: NULL
-
   always:
     - name: Unlock the  blueprint 
       juniper.apstra.blueprint:
@@ -371,16 +347,3 @@
         state: committed
         auth_token: "{{ auth.token }}"
       register: blueprint_commit
-
-    - name: Update the label of Pod as Success
-      k8s:
-        state: patched
-        definition:
-          apiVersion: v1
-          kind: Pod
-          metadata:
-            name: "{{ event.resource.metadata.name }}"
-            namespace: "{{ event.resource.metadata.namespace }}"
-            labels:
-              apstraStatus: "Success"
-      when: not ep_update.failed

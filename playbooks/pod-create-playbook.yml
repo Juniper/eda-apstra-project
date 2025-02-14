@@ -3,7 +3,27 @@
 - name: Create connectivity template in Apstra
   hosts: localhost
   gather_facts: false
-  roles:
-    - role: lock_blueprint
-    - role: k8s_create_connectivity_template
-    - role: unlock_blueprint
+  tasks:
+    - name: Lock Blueprint
+      block:
+        - include_role:
+            name: lock_blueprint
+      rescue:
+        - include_role:
+            name: unlock_blueprint
+        - fail:
+            msg: "Lock Blueprint role failed."
+
+    - name: Create K8s Security Zone
+      block:
+        - include_role:
+            name: k8s_create_connectivity_template
+      rescue:
+        - include_role:
+            name: unlock_blueprint
+        - fail:
+            msg: "Create connectivity template role failed."
+
+    - name: Unlock Blueprint (if previous roles succeeded)
+      include_role:
+        name: unlock_blueprint
