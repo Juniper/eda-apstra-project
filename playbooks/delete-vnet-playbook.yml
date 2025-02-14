@@ -1,11 +1,28 @@
-# delete-vnet-playbook.yml
 ---
 - name: Delete virtual network in Apstra
   hosts: localhost
   gather_facts: false
-  roles:
-    - role: lock_blueprint
-    - role: k8s_delete_virtual_network
-    - role: unlock_blueprint
+  tasks:
+    - name: Lock Blueprint
+      block:
+        - include_role:
+            name: lock_blueprint
+      rescue:
+        - include_role:
+            name: unlock_blueprint
+        - fail:
+            msg: "Lock Blueprint role failed."
 
-    
+    - name: Delete virtual network in Apstra
+      block:
+        - include_role:
+            name: k8s_delete_virtual_network
+      rescue:
+        - include_role:
+            name: unlock_blueprint
+        - fail:
+            msg: "Delete Virtual Network role failed."
+
+    - name: Unlock Blueprint (if previous roles succeeded)
+      include_role:
+        name: unlock_blueprint

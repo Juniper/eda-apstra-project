@@ -10,6 +10,8 @@ This role requires Ansible 2.15 or higher.
 
 Role Variables
 --------------
+Please change the variables in [file](../apstra-aap-configure/vars/main.yml).
+
 | Variable                       | Required | Type                      | Comments                                                                        |
 |--------------------------------|----------|---------------------------|---------------------------------------------------------------------------------|
 | organization_name              | yes      | String                    | Name of the organization in Ansible Automation Plaform                          |
@@ -36,13 +38,15 @@ Store all the senstive information like password, in Ansible vault and keep enct
 
 Files
 ------------
+ openshift-ca.crt and openshift-sa.crt are empty files [here](../apstra-aap-configure/files), Please fill the content in those files as per the [document](https://developers.redhat.com/articles/2023/06/26/how-deploy-apps-k8s-cluster-automation-controller#install_and_configure_ansible_automation_platform)
+
 
 | Name                           | Required to Change | Comments                                                                                                     |
 |--------------------------------|--------------------|--------------------------------------------------------------------------------------------------------------|
 | cred_injector_config.json      | No                 | This file requires to create Apstra credential types in Ansible automation platform.                         |
 | cred_input_config.json         | No                 | This file requires to create Apstra credential types in Ansible automation platform.                         |
 | openshift-ca.crt               | yes                | Certificate Authority data for OpenShift Cluster.                                                            |
-| openshift-sa.crt               | yes                | API authentication bearer token of Service Account of OpenShift                                              |
+| openshift-sa.token               | yes                | API authentication bearer token of Service Account of OpenShift                                              |
 
 **Note**
 If you are not aware how to obtain, Certificate Autority data and API authentication bearer token, you may read [this](https://developers.redhat.com/articles/2023/06/26/how-deploy-apps-k8s-cluster-automation-controller#install_and_configure_ansible_automation_platform) article.
@@ -70,5 +74,5 @@ BSD
 
 Author Information
 ------------------
-
-An optional section for the role authors to include contact information, or a website (HTML is not allowed).
+Name: Pratik Dave 
+Email: pratikd@juniper.net

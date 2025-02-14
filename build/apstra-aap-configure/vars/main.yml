@@ -1,6 +1,8 @@
 ---
 # vars file for apstra-aap-configure
 
+## It is best practice to use Ansible Vault to encrypt sensitive data such as passwords.
+
 # Common Variables
 organization_name: "Default"
 project_url: "https://github.com/Juniper/eda-apstra-project.git" 

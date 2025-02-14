@@ -12,7 +12,7 @@
         logout: false
       register: auth
 
-    - name: Lock blueprint
+    - name: Unlock blueprint
       juniper.apstra.blueprint:
         body:
           label: "{{ bluprint_label_value }}"
@@ -85,7 +85,7 @@
         logout: false
       register: auth
       
-    - name: Lock blueprint
+    - name: Unlock blueprint
       juniper.apstra.blueprint:
         body:
           label: "{{ bluprint_label_value }}"
