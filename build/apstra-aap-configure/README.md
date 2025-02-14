@@ -10,6 +10,8 @@ This role requires Ansible 2.15 or higher.
 
 Role Variables
 --------------
+Please change the variables in [file](../apstra-aap-configure/vars/main.yml).
+
 | Variable                       | Required | Type                      | Comments                                                                        |
 |--------------------------------|----------|---------------------------|---------------------------------------------------------------------------------|
 | organization_name              | yes      | String                    | Name of the organization in Ansible Automation Plaform                          |
@@ -36,6 +38,8 @@ Store all the senstive information like password, in Ansible vault and keep enct
 
 Files
 ------------
+ openshift-ca.crt and openshift-sa.crt are empty files [here](../apstra-aap-configure/files), Please fill the content in those files as per the [document](https://developers.redhat.com/articles/2023/06/26/how-deploy-apps-k8s-cluster-automation-controller#install_and_configure_ansible_automation_platform)
+
 
 | Name                           | Required to Change | Comments                                                                                                     |
 |--------------------------------|--------------------|--------------------------------------------------------------------------------------------------------------|
@@ -70,5 +74,5 @@ BSD
 
 Author Information
 ------------------
-
-An optional section for the role authors to include contact information, or a website (HTML is not allowed).
+Name: Pratik Dave 
+Email: pratikd@juniper.net
