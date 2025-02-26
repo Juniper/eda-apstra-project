@@ -177,7 +177,7 @@
 
     - name: Get the remote host from the node
       set_fact:
-        remote_host: "{{ remote_interface_json[0].lldp.neighbors[0][0]['system-name'] }}"
+        remote_host: "{{ remote_interface_json[0].lldp.neighbors[0][0]['system-name'] | split('.') | first }}"
 
     - name: Debug remote host
       debug:
