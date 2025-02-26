@@ -191,8 +191,11 @@
   vars:
     port_id: >-
       {{
-        (item.lldp.neighbors[0] | selectattr('port-id', 'defined') | map(attribute='port-id') | first | default(''))
-        if item.lldp is defined and item.lldp.enabled and item.lldp.neighbors | length > 0 else ''
+        (item.lldp['neighbors'][0] | selectattr('port-id', 'defined') | map(attribute='port-id') | first | default(''))
+        if (item.get('lldp') is defined and
+            item.lldp.get('enabled', False) and
+            item.lldp.get('neighbors', []) | length > 0)
+        else ''
       }}
 
 - name: Display the node to port-id map
