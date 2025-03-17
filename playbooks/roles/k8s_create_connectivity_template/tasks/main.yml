@@ -156,7 +156,11 @@
         port_id: >-
           {{
             (item.lldp.neighbors[0] | selectattr('port-id', 'defined') | map(attribute='port-id') | first | default(''))
-            if item.lldp is defined and item.lldp.enabled and item.lldp.neighbors | length > 0 else ''
+            if (item.lldp is defined and
+                item.lldp.get('enabled', False) and
+                'neighbors' in item.lldp and
+                item.lldp.neighbors | length > 0)
+            else ''
           }}
 
     - name: Display the node to port-id map
@@ -173,7 +177,7 @@
 
     - name: Get the remote host from the node
       set_fact:
-        remote_host: "{{ remote_interface_json[0].lldp.neighbors[0][0]['system-name'] }}"
+        remote_host: "{{ remote_interface_json[0].lldp.neighbors[0][0]['system-name'] | split('.') | first }}"
 
     - name: Debug remote host
       debug:
