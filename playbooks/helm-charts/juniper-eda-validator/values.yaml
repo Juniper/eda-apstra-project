@@ -1,0 +1,36 @@
+
+project: apstra-rhocp-demo-helm
+vrf: vrf-demo-helm
+workloads:
+  deployment:
+    name: vn1-deployment-helm
+    image: centos/tools
+    replicas: 1
+    sriovnet: 
+      name: sriovnet-vn1-helm
+      subnet: "10.141.0.0/24"
+      rangeStart: "10.141.0.101"
+      rangeEnd: "10.141.0.200"
+      gateway: "10.141.0.1"
+      routes:
+      - dst: "10.142.0.0/16"
+        gw: "10.141.0.1"    
+    vnet: vn1-helm
+    resource: pod_vfs_ens2f0
+  kubevirtvm:
+    name: kubevirt-vn2-helm
+    sriovnet: 
+      name: sriovnet-vn2-helm
+      subnet: "10.142.0.0/24"
+      rangeStart: "10.142.0.101"
+      rangeEnd: "10.142.0.200"
+      gateway: "10.142.0.1"
+      routes:
+      - dst: "10.141.0.0/16"
+        gw: "10.142.0.1"    
+    vnet: vn2-helm
+    resource: vm_vfs_ens2f1
+
+
+
+
