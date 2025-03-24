@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.workloads.deployment.name }}
+  namespace: {{ .Values.project }}
+  labels:
+    vnet: vn1-helm
+    type: eda
+spec:
+  {{- if ((.Values.workloads.deployment).replicas) }}
+  replicas: {{ (.Values.workloads.deployment).replicas }}
+  {{- else }}
+  replicas: 1
+  {{ end }}
+  selector:
+    matchLabels:
+      vnet: vn1-helm
+      type: eda
+  template:
+    metadata:
+      name: vn1-deployment-helm
+      labels:
+        vnet: vn1-helm
+        type: eda
+      annotations:
+        apstra.juniper.net/ep: '[
+          {
+            "vnetName": {{ quote .Values.workloads.deployment.vnet }}
+          }
+        ]'
+        k8s.v1.cni.cncf.io/networks: '[
+          {
+            "name": {{ quote .Values.workloads.deployment.sriovnet.name }},
+            "namespace": {{ quote .Values.project }},
+            "interface": "ext0"
+          }
+        ]'
+    spec:
+      containers:
+        - name: iperf3
+          {{- if ((.Values.workloads.deployment).image) }}
+          image: {{ (.Values.workloads.deployment).image }}
+          {{- else }}
+          image: centos/tools
+          {{ end }}
+          command: [ "/bin/bash", "-c", "--" ]
+          args: [ "while true; do sleep 300000; done;" ]
+          ports:
+            - containerPort: 5201

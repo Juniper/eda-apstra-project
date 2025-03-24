@@ -1,0 +1,36 @@
+apiVersion: sriovnetwork.openshift.io/v1
+kind: SriovNetwork
+metadata:
+  name: sriovnet-vn2-helm
+  namespace: openshift-sriov-network-operator
+  labels:
+    pfname: ens2f1
+    type: eda
+  annotations:        
+    apstra.juniper.net/vnet: '[
+      {
+        "vnetName": {{ quote .Values.workloads.kubevirtvm.vnet }},
+        "vrfName": {{ quote .Values.vrf }}
+      }
+    ]'
+spec:
+  ipam: |
+    {
+      "type": "host-local",
+      "subnet": {{ quote .Values.workloads.kubevirtvm.sriovnet.subnet }},
+      "rangeStart": {{ quote .Values.workloads.kubevirtvm.sriovnet.rangeStart }},
+      "rangeEnd": {{ quote .Values.workloads.kubevirtvm.sriovnet.rangeEnd }},
+      "gateway": {{ quote .Values.workloads.kubevirtvm.sriovnet.gateway }},
+      "routes": [
+        {
+          {{ range $key, $value := .Values.workloads.kubevirtvm.sriovnet.routes }}
+          "dst": {{ quote $value.dst }},
+          "gw": {{ quote $value.gw }}
+          {{ end }}
+        }
+      ]
+    }
+  networkNamespace: apstra-rhocp-demo-helm
+  #resourceName: vm_vfs_ens2f1
+  resourceName: {{ .Values.workloads.kubevirtvm.resource }}
+  vlan: 20

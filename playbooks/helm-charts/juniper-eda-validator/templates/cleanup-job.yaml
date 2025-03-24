@@ -1,0 +1,72 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: delete-pods-first
+  namespace: apstra-rhocp-demo-helm
+  annotations:
+    "helm.sh/hook": pre-delete
+    "helm.sh/hook-weight": "3"
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: pre-install-hook-deleter
+      containers:
+      - name: delete-hook
+        image: bitnami/kubectl:latest
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+
+          #!/bin/bash
+          NAMESPACE={{ .Values.project }}
+          TIMEOUT=600
+          INTERVAL=10
+
+          kubectl delete deploy {{ .Values.workloads.deployment.name }} -n {{ .Values.project }}
+          kubectl delete virtualmachine {{ .Values.workloads.kubevirtvm.name }} -n {{ .Values.project }}
+          echo "Waiting for pods and deployments to be removed..."
+
+
+          START_TIME=$(date +%s)
+          while true; do
+            PODS=$(kubectl get pods -n "$NAMESPACE" | grep -v delete-pods | awk 'NR>1 {print $1}')
+            DEPLOYMENTS=$(kubectl get deployments -n "$NAMESPACE" -o jsonpath='{.items[*].metadata.name}')
+
+            if [ -z "$PODS" -a -z "$DEPLOYMENTS" ]; then
+              echo "Pods and deployments have been removed."
+              exit 0 # Success
+            fi
+
+            CURRENT_TIME=$(date +%s)
+            ELAPSED_TIME=$((CURRENT_TIME - START_TIME))
+
+            if [ "$ELAPSED_TIME" -gt "$TIMEOUT" ]; then
+              echo "Timeout: Pods and deployments still exist after $TIMEOUT seconds."
+              exit 1 # Failure
+            fi
+
+            sleep "$INTERVAL"
+          done
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: delete-pre-install-hook
+  namespace: {{ .Values.project }}
+  annotations:
+    "helm.sh/hook": post-delete
+    "helm.sh/hook-weight": "3"
+   #"helm.sh/hook-delete-policy": hook-succeeded
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: pre-install-hook-deleter
+      containers:
+      - name: delete-hook
+        image: bitnami/kubectl:latest
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          kubectl delete project {{ .Values.project }}

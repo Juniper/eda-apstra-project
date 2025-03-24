@@ -1,0 +1,118 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: {{ .Values.workloads.kubevirtvm.name }}
+  namespace: {{ .Values.project }}
+  labels:
+    kubevirt.io/size: large
+    kubevirt.io/domain: kubevirt-vn2
+    type: eda
+spec:
+  running: true
+  template:
+    metadata:
+      labels: 
+        kubevirt.io/size: large
+        kubevirt.io/domain: kubevirt-vn2
+        type: eda
+      annotations:
+        apstra.juniper.net/ep: '[
+          {
+            "vnetName": {{ .Values.workloads.kubevirtvm.vnet }}
+          }
+        ]'
+        k8s.v1.cni.cncf.io/networks: '[
+          {
+            "name": {{ .Values.workloads.kubevirtvm.sriovnet.name }},
+            "namespace": {{ .Values.project }}
+          }
+        ]'
+    spec:
+      domain:
+        cpu:
+          cores: 16
+        devices:
+          disks:
+          - disk:
+              bus: virtio
+            name: rootfs
+          - cdrom:
+              bus: sata
+            name: cloudinitvolume
+          interfaces:
+          - name: default
+            masquerade: {}
+          - name: private-net-helm
+            sriov: {}
+        machine:
+          type: q35
+        resources:
+          requests:
+            memory: 16G
+      volumes:
+        - containerDisk:
+            image: s-artifactory.juniper.net/atom-docker/kubevirt-images/ubuntu-22.04-k8s-1.28.2:v1 
+          name: rootfs 
+        - cloudInitConfigDrive:
+            userData: |-
+              #cloud-config
+              chpasswd:
+                list: |
+                  ubuntu:ubuntu
+                  root:root
+                expire: False
+              write_files:
+              - encoding: plain
+                content: |
+                  network:
+                    version: 2
+                    ethernets:
+                      enp1s0:
+                        routes:
+                        -   to: 0.0.0.0/0
+                            via: 10.0.2.1
+                            table: 10
+                        routing-policy:
+                        -   from: 10.0.2.1/24
+                            table: 10
+                      enp7s0:
+                        addresses: [10.142.0.213/24]
+                        routes:
+                        -   to: 0.0.0.0/0
+                            via: 10.142.0.1
+                owner: root:root
+                path: /etc/netplan/source-based-routing.yaml
+                permissions: '0644'
+              bootcmd:
+                - dhclient
+              runcmd:
+                - dhclient
+                - netplan generate
+                - netplan apply
+              users:
+              - name: ubuntu
+                ssh-authorized-keys:
+                  - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCtgGlrOj4eOALNutALv+Vs0H+PzP9WLQdxvOAGspkP4ryEJ5Lf2YYE6KyyYjpsoGB1S3jWiRNbsOA1w4PeemwnrqLhKbyTGHu3ITsayHwtMuBab574GWlF/WR6GXry+V64iCrf36dW4L12408xpDFbJTwNK4AiRPq1xRUZIuqihch5x/WLbKSJ2ZuB2OwAoPZFQNvHV2+SP+m2kxGcFm1AnzdaLdDFtCwtyvT6jSuZomEl+OebGtBnXtKOoqzE4OdT9Dxj0KP7xqFe5Oy1hny7kkoGH9JRyzPpDYCziWJz3wuUg43iBoBazv+XM6Trzuvj5ujjHHpGXVrf7NMYc/2wgJoleRCKYvphOx1cjg1mkJRtIebOEooNe1YcwocDv9mLVDyHYGfH7v+SnqZb7wZN/0lzZSBUyjQRbsoQIhQc5D8jSH63iO5doYgo5GRIeCACRC7dGVWp2FlMTJtUfCFSY+cWneWZsZ+8+6vr2mZsbziefp4Anp3ViNuooM+pE0U= root@5d9s2
+          name: cloudinitvolume
+      networks:
+      - name: default
+        pod: {}
+      - multus:
+          networkName: sriovnet-vn2-helm 
+        name: private-net-helm
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kubevirt-vn2-svc-helm
+  namespace: {{ .Values.project }}
+spec:
+  ports:
+  - port: 22
+    targetPort: 22
+    nodePort: 30154
+  selector:
+    kubevirt.io/size: large
+    kubevirt.io/domain: {{ .Values.workloads.kubevirtvm.name }}
+    type: eda
+  type: NodePort

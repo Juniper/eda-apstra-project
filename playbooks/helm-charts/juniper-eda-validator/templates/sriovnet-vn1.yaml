@@ -1,0 +1,36 @@
+apiVersion: sriovnetwork.openshift.io/v1
+kind: SriovNetwork
+metadata:
+  name: {{ .Values.workloads.deployment.sriovnet.name }}
+  namespace: openshift-sriov-network-operator
+  labels:
+    pfname: ens2f0
+    type: eda
+  annotations:
+    apstra.juniper.net/vnet: '[
+      {
+        "vnetName": {{ quote .Values.workloads.deployment.vnet }},
+        "vrfName": {{ quote .Values.vrf }}
+      }
+    ]'
+spec:
+  ipam: |
+    {
+      "type": "host-local",
+      "subnet": {{ quote .Values.workloads.deployment.sriovnet.subnet }},
+      "rangeStart": {{ quote .Values.workloads.deployment.sriovnet.rangeStart }},
+      "rangeEnd": {{ quote .Values.workloads.deployment.sriovnet.rangeEnd }},
+      "gateway": {{ quote .Values.workloads.deployment.sriovnet.gateway }},
+      "routes": [
+        {
+          {{ range $key, $value := .Values.workloads.deployment.sriovnet.routes }}
+          "dst": {{ quote $value.dst }},
+          "gw": {{ quote $value.gw }}
+          {{ end }}
+        }
+      ]
+    }
+  networkNamespace: {{ .Values.project }}
+  #resourceName: pod_vfs_ens2f0
+  resourceName: {{ .Values.workloads.deployment.resource }}
+  vlan: 10
