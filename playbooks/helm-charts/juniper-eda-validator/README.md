@@ -15,7 +15,7 @@ Juniper Apstra Event Drive Automation.
 
 helm install juniper-eda-validator playbooks/helm-charts/juniper-eda-validator
 
-## Installing the Chart
+## Uninstalling the Chart
 
 helm uninstall juniper-eda-validator
 
