@@ -3,15 +3,15 @@
   hosts: localhost
   gather_facts: false
   tasks:
-    - name: Lock Blueprint
-      block:
-        - include_role:
-            name: lock_blueprint
-      rescue:
-        - include_role:
-            name: unlock_blueprint
-        - fail:
-            msg: "Lock Blueprint role failed."
+#    - name: Lock Blueprint
+#      block:
+#        - include_role:
+#            name: lock_blueprint
+#      rescue:
+#        - include_role:
+#            name: unlock_blueprint
+#        - fail:
+#            msg: "Lock Blueprint role failed."
 
     - name: Create K8s Security Zone
       block:
