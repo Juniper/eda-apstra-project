@@ -66,17 +66,17 @@
         lock_state: "ignore"
       register: register_bp
 
-    - name: Create tags if sz_tags is defined and is a list
-      juniper.apstra.tag:
-        id: "{{ register_bp.id.blueprint }}"
-        body:
-          label: "{{ tag }}"
-          description: "test tag description"
-        auth_token: "{{ auth.token }}"
-      when: sz_tags is defined and sz_tags | length > 0
-      loop: "{{ sz_tags }}"
-      loop_control:
-        loop_var: tag
+#    - name: Create tags if sz_tags is defined and is a list
+#      juniper.apstra.tag:
+#        id: "{{ register_bp.id.blueprint }}"
+#        body:
+#          label: "{{ tag }}"
+#          description: "test tag description"
+#        auth_token: "{{ auth.token }}"
+#      when: sz_tags is defined and sz_tags | length > 0
+#      loop: "{{ sz_tags }}"
+#      loop_control:
+#        loop_var: tag
 
     - name: Create security_zone
       juniper.apstra.security_zone:
