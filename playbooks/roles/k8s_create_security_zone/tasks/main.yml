@@ -1,5 +1,17 @@
 # roles/create_sz/tasks/main.yml
 ---
+- name: Debug input variables
+  debug:
+    var: ns
+- name: Debug annotations
+  debug:
+    var: annotate
+- name: Debug event
+  debug:
+    var: ev
+- name: Debug blueprint name
+  debug:
+    var: bp
 - name: print blurprint_name
   debug:
     msg: "{{ blueprint_name }}"
