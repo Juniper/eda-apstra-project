@@ -68,7 +68,7 @@
 
     - name: Create tags if sz_tags is defined and is a list
       juniper.apstra.tag:
-        id: "{{ register_bp.id }}"
+        id: "{{ register_bp.id.blueprint }}"
         body:
           label: "{{ tag }}"
           description: "test tag description"
