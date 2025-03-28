@@ -80,7 +80,8 @@
 
     - name: Create security_zone
       juniper.apstra.security_zone:
-        id: {"blueprint": "34aa0cc7-4721-4c36-8560-8585c206b4dc"}
+        id:
+          "blueprint": "34aa0cc7-4721-4c36-8560-8585c206b4dc"
         body: "{{ vrf_data_with_sztype }}"
         auth_token: "{{ auth.token }}"
         tags: "{{ sz_tags if sz_tags is not none else omit }}"
