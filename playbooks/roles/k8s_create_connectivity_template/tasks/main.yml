@@ -44,7 +44,7 @@
         pci_addresses: >-
           {{
             pod_annotations['k8s.v1.cni.cncf.io/network-status'] | from_json 
-            | selectattr('name', 'ne', 'ovn-kubernetes') 
+            | rejectattr('name', 'in', ['ovn-kubernetes', 'k8s-pod-network']) 
             | selectattr('device-info', 'defined') 
             | selectattr('device-info.type', 'eq', 'pci') 
             | map(attribute='device-info.pci.pci-address') 
