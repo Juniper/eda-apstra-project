@@ -68,7 +68,7 @@
         api_version: sriovnetwork.openshift.io/v1
         kind: SriovNetworkNodeState
         name: "{{ node_name }}"
-        namespace: openshift-sriov-network-operator
+        namespace: sriov-network-operator
       register: sriov_node_state
 
     - name: Initialize physical interfaces list
