@@ -28,7 +28,7 @@ pipenv:
 	pipenv install --dev
 test: 
 	pipenv run pip install pytest kubernetes pyyaml
-	pipenv run pytest feature_tests/test_deploy_helm_chart.py
+	pipenv run pytest feature_tests/test_inter_connectivity.py
 # Ignore warnings about localhost from ansible-playbook
 export ANSIBLE_LOCALHOST_WARNING=False
 export ANSIBLE_INVENTORY_UNPARSED_WARNING=False
