@@ -5,7 +5,7 @@ metadata:
   namespace: openshift-sriov-network-operator
   labels:
     pfname: ens2f1
-    type: eda
+    #type: eda
   annotations:        
     apstra.juniper.net/vnet: '[
       {
