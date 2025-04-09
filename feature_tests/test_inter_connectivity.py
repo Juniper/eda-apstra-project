@@ -40,10 +40,21 @@ def test_deployment_exists(deploy_helm_chart):
     # Verify deployment exists
     deployment_name = helm_values['workloads']['deployment']['name']
     namespace = "apstra-rhocp-demo-helm"
-
+    max_retries = 10 # Maximum number of retries
+    wait_seconds = 10  # Wait time between retries
     try:
-        deployment = apps_v1.read_namespaced_deployment(deployment_name, namespace)
-        assert deployment.metadata.name == deployment_name
+        for i in range(max_retries):
+            deployment = apps_v1.read_namespaced_deployment(deployment_name, namespace)
+            available_replicas = deployment.status.available_replicas
+            desired_replicas = deployment.spec.replicas
+
+            if available_replicas == desired_replicas:
+                assert deployment.metadata.name == deployment_name
+                break  # Exit the loop once the deployment is ready
+            else:
+                time.sleep(wait_seconds)  # Wait before retrying
+        else:
+            pytest.fail(f"Deployment test failed: Deployment '{deployment_name}' did not become ready in time.")
     except ApiException as e:
         pytest.fail(f"Deployment test failed: {e}")
 
