@@ -33,7 +33,7 @@ def deploy_helm_chart():
     yield
 
     # Teardown: Uninstall Helm chart
-    uninstall_cmd = ["helm", "uninstall", release_name, "--namespace", namespace]
+    # uninstall_cmd = ["helm", "uninstall", release_name, "--namespace", namespace]
     subprocess.run(uninstall_cmd, check=True)
 
 def test_deployment_exists(deploy_helm_chart):
