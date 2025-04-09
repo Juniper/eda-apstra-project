@@ -72,7 +72,7 @@ def test_network_connectivity(deploy_helm_chart):
     vnet2_ip = helm_values['workloads']['kubevirtvm']['sriovnet']['rangeStart']
 
     # Get Vnet1 pod name
-    pods = v1.list_namespaced_pod(namespace, label_selector=vnet1_pod_label)
+    pods = v1.list_namespaced_pod(namespace)
     if not pods.items:
         pytest.fail("No pods found for Vnet1 deployment")
     vnet1_pod_name = pods.items[0].metadata.name
