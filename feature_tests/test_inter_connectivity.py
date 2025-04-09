@@ -39,7 +39,7 @@ def deploy_helm_chart():
 def test_deployment_exists(deploy_helm_chart):
     # Verify deployment exists
     deployment_name = helm_values['workloads']['deployment']['name']
-    namespace = "default"
+    namespace = "apstra-rhocp-demo-helm"
 
     try:
         deployment = apps_v1.read_namespaced_deployment(deployment_name, namespace)
@@ -50,7 +50,7 @@ def test_deployment_exists(deploy_helm_chart):
 def test_kubevirtvm_exists(deploy_helm_chart):
     # Verify kubevirtvm exists (assuming it's a custom resource)
     kubevirtvm_name = helm_values['workloads']['kubevirtvm']['name']
-    namespace = "default"
+    namespace = "apstra-rhocp-demo-helm"
 
     # Custom resource API group and version
     group = "kubevirt.io"
@@ -67,7 +67,7 @@ def test_kubevirtvm_exists(deploy_helm_chart):
 def test_network_connectivity(deploy_helm_chart):
     # Verify network connectivity from Vnet1 IP to Vnet2 IP
     deployment_name = helm_values['workloads']['deployment']['name']
-    namespace = "default"
+    namespace = "apstra-rhocp-demo-helm"
     vnet1_pod_label = f"app={deployment_name}"
     vnet2_ip = helm_values['workloads']['kubevirtvm']['sriovnet']['rangeStart']
 
