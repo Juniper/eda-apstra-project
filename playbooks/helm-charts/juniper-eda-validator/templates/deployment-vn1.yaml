@@ -5,7 +5,7 @@ metadata:
   namespace: {{ .Values.project }}
   labels:
     vnet: vn1-helm
-    #type: eda
+    type: eda
 spec:
   {{- if ((.Values.workloads.deployment).replicas) }}
   replicas: {{ (.Values.workloads.deployment).replicas }}
@@ -15,7 +15,7 @@ spec:
   selector:
     matchLabels:
       vnet: vn1-helm
-      #type: eda
+      type: eda
   template:
     metadata:
       name: vn1-deployment-helm
