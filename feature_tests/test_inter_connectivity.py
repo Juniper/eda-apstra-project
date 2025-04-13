@@ -118,13 +118,15 @@ def get_kubevirtvm_ip_from_user_data(kubevirtvm_name, namespace):
     try:
         # Custom resource API group and version
         group = "kubevirt.io"
-        version = "v1alpha3"
+        version = "v1"
         plural = "virtualmachines"
 
         # Fetch the KubeVirt VM custom resource
         kubevirtvm = client.CustomObjectsApi().get_namespaced_custom_object(
             group=group, version=version, namespace=namespace, plural=plural, name=kubevirtvm_name
         )
+        if not kubevirtvm:
+            pytest.fail(f"KubeVirt VM '{kubevirtvm_name}' not found in namespace '{namespace}'")
 
         # Extract the userData from the cloudInitConfigDrive volume
         volumes = kubevirtvm.get("spec", {}).get("spec", {}).get("volumes", [])
