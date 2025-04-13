@@ -86,7 +86,7 @@ def get_pod_ext3_ip(deployment_name, namespace):
     try:
         # Get the label selector for the deployment
         deployment = apps_v1.read_namespaced_deployment(deployment_name, namespace)
-        //label_selector = ",".join([f"{k}={v}" for k, v in deployment.spec.selector.match_labels.items()])
+        #label_selector = ",".join([f"{k}={v}" for k, v in deployment.spec.selector.match_labels.items()])
 
         # List pods matching the label selector
         pods = v1.list_namespaced_pod(namespace)
