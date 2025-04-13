@@ -167,9 +167,11 @@ def test_network_connectivity(deploy_helm_chart):
     #vnet2_ip = helm_values['workloads']['kubevirtvm']['sriovnet']['rangeStart']
 
     # Get Vnet1 pod name
-    pods = v1.list_namespaced_pod(namespace)
+    deployment = apps_v1.read_namespaced_deployment(deployment_name, namespace)
+    label_selector = ",".join([f"{k}={v}" for k, v in deployment.spec.selector.match_labels.items()])
+    pods = v1.list_namespaced_pod(namespace, label_selector=label_selector)
     if not pods.items:
-        pytest.fail("No pods found for Vnet1 deployment")
+        pytest.fail(f"No pods found for deployment '{deployment_name}' in namespace '{namespace}'")
     vnet1_pod_name = pods.items[0].metadata.name
 
     # Execute ping command from Vnet1 pod to Vnet2 IP
