@@ -3,7 +3,7 @@ import yaml
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 import subprocess
-
+import time
 # Load Kubernetes configuration
 config.load_kube_config()
 
