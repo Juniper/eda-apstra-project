@@ -36,7 +36,7 @@ def deploy_helm_chart():
     uninstall_cmd = ["helm", "uninstall", release_name, "--namespace", namespace]
     # subprocess.run(uninstall_cmd, check=True)
 
-def test_deployment_exists(deploy_helm_chart):
+def check_deployment_status(deployment_name, namespace):
     # Verify deployment exists
     deployment_name = helm_values['workloads']['deployment']['name']
     namespace = "apstra-rhocp-demo-helm"
@@ -150,6 +150,8 @@ def test_network_connectivity(deploy_helm_chart):
     kubevirtvm_name = helm_values['workloads']['kubevirtvm']['name']
     deployment_name = helm_values['workloads']['deployment']['name']
     namespace = "apstra-rhocp-demo-helm"
+    check_deployment_status(deployment_name, namespace)
+    # Get Vnet1 and Vnet2 IPs
     vnet1_ip = get_pod_ext3_ip(deployment_name, namespace)
     if not vnet1_ip:
         pytest.fail(f"Network connectivity test failed: {e}")
