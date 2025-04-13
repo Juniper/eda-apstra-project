@@ -75,7 +75,7 @@ def test_kubevirtvm_exists(deploy_helm_chart):
     except ApiException as e:
         pytest.fail(f"KubeVirt VM test failed: {e}")
 
-def get_pod_ext3_ip(deployment_name, namespace):
+def get_pod_ext0_ip(deployment_name, namespace):
     """
     Get the IP address of the ext3 interface of a pod in the specified deployment.
 
@@ -86,7 +86,7 @@ def get_pod_ext3_ip(deployment_name, namespace):
     try:
         # Get the label selector for the deployment
         deployment = apps_v1.read_namespaced_deployment(deployment_name, namespace)
-        label_selector = ",".join([f"{k}={v}" for k, v in deployment.spec.selector.match_labels.items()])
+        #label_selector = ",".join([f"{k}={v}" for k, v in deployment.spec.selector.match_labels.items()])
 
         # List pods matching the label selector
         pods = v1.list_namespaced_pod(namespace)
@@ -100,7 +100,7 @@ def get_pod_ext3_ip(deployment_name, namespace):
             import json
             network_status = json.loads(ext3_ip)
             for network in network_status:
-                if network.get("name") == "ext3":
+                if network.get("name") == "ext0":
                     return network.get("ips", [None])[0]
         pytest.fail(f"ext3 interface IP not found for pod '{pod.metadata.name}'")
     except ApiException as e:
@@ -152,7 +152,7 @@ def test_network_connectivity(deploy_helm_chart):
     namespace = "apstra-rhocp-demo-helm"
     check_deployment_status(deployment_name, namespace)
     # Get Vnet1 and Vnet2 IPs
-    vnet1_ip = get_pod_ext3_ip(deployment_name, namespace)
+    vnet1_ip = get_pod_ext0_ip(deployment_name, namespace)
     if not vnet1_ip:
         pytest.fail(f"Network connectivity test failed: {e}")
         pytest.fail(f"Failed to get ext3 IP for deployment '{deployment_name}': {e}")
