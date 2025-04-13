@@ -4,6 +4,8 @@ from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 import subprocess
 import time
+import json
+
 # Load Kubernetes configuration
 config.load_kube_config()
 
@@ -95,12 +97,11 @@ def get_pod_ext0_ip(deployment_name, namespace):
 
         # Retrieve the ext3 IP from the pod annotations or status
         pod = pods.items[0]  # Assuming you want the first pod
-        ext3_ip = pod.metadata.annotations.get("k8s.v1.cni.cncf.io/network-status", "")
-        if ext3_ip:
-            import json
-            network_status = json.loads(ext3_ip)
-            for network in network_status:
-                if network.get("name") == "ext0":
+        network_info = pod.metadata.annotations.get("k8s.v1.cni.cncf.io/network-status", "")
+        if network_info:
+            network_info_str = json.loads(network_info)
+            for network in network_info_str:
+                if network.get("interface") == "ext0":
                     return network.get("ips", [None])[0]
         pytest.fail(f"ext3 interface IP not found for pod '{pod.metadata.name}'")
     except ApiException as e:
