@@ -75,12 +75,89 @@ def test_kubevirtvm_exists(deploy_helm_chart):
     except ApiException as e:
         pytest.fail(f"KubeVirt VM test failed: {e}")
 
+def get_pod_ext3_ip(deployment_name, namespace):
+    """
+    Get the IP address of the ext3 interface of a pod in the specified deployment.
+
+    :param deployment_name: Name of the deployment
+    :param namespace: Namespace where the deployment resides
+    :return: IP address of the ext3 interface
+    """
+    try:
+        # Get the label selector for the deployment
+        deployment = apps_v1.read_namespaced_deployment(deployment_name, namespace)
+        //label_selector = ",".join([f"{k}={v}" for k, v in deployment.spec.selector.match_labels.items()])
+
+        # List pods matching the label selector
+        pods = v1.list_namespaced_pod(namespace)
+        if not pods.items:
+            pytest.fail(f"No pods found for deployment '{deployment_name}' in namespace '{namespace}'")
+
+        # Retrieve the ext3 IP from the pod annotations or status
+        pod = pods.items[0]  # Assuming you want the first pod
+        ext3_ip = pod.metadata.annotations.get("k8s.v1.cni.cncf.io/network-status", "")
+        if ext3_ip:
+            import json
+            network_status = json.loads(ext3_ip)
+            for network in network_status:
+                if network.get("name") == "ext3":
+                    return network.get("ips", [None])[0]
+        pytest.fail(f"ext3 interface IP not found for pod '{pod.metadata.name}'")
+    except ApiException as e:
+
+def get_kubevirtvm_ip_from_user_data(kubevirtvm_name, namespace):
+    """
+    Get the IP address from the addresses field in the userData of the cloudInitConfigDrive volume.
+
+    :param kubevirtvm_name: Name of the KubeVirt VM
+    :param namespace: Namespace where the KubeVirt VM resides
+    :return: IP address from the addresses field
+    """
+    try:
+        # Custom resource API group and version
+        group = "kubevirt.io"
+        version = "v1alpha3"
+        plural = "virtualmachines"
+
+        # Fetch the KubeVirt VM custom resource
+        kubevirtvm = client.CustomObjectsApi().get_namespaced_custom_object(
+            group=group, version=version, namespace=namespace, plural=plural, name=kubevirtvm_name
+        )
+
+        # Extract the userData from the cloudInitConfigDrive volume
+        volumes = kubevirtvm.get("spec", {}).get("volumes", [])
+        for volume in volumes:
+            if "cloudInitConfigDrive" in volume:
+                user_data = volume["cloudInitConfigDrive"].get("userData", "")
+                if user_data:
+                    import yaml
+                    cloud_config = yaml.safe_load(user_data)
+                    network_config = cloud_config.get("write_files", [])[0].get("content", "")
+                    network_data = yaml.safe_load(network_config)
+                    enp7s0_config = network_data.get("network", {}).get("ethernets", {}).get("enp7s0", {})
+                    addresses = enp7s0_config.get("addresses", [])
+                    if addresses:
+                        # Extract the IP address (remove the CIDR suffix)
+                        return addresses[0].split('/')[0]
+
+        pytest.fail(f"IP address not found in userData of KubeVirt VM '{kubevirtvm_name}'")
+    except ApiException as e:
+        pytest.fail(f"Failed to get IP from userData for KubeVirt VM '{kubevirtvm_name}': {e}")
+
 def test_network_connectivity(deploy_helm_chart):
     # Verify network connectivity from Vnet1 IP to Vnet2 IP
+    kubevirtvm_name = helm_values['workloads']['kubevirtvm']['name']
     deployment_name = helm_values['workloads']['deployment']['name']
     namespace = "apstra-rhocp-demo-helm"
-    vnet1_pod_label = f"app={deployment_name}"
-    vnet2_ip = helm_values['workloads']['kubevirtvm']['sriovnet']['rangeStart']
+    vnet1_ip = get_pod_ext3_ip(deployment_name, namespace)
+    if not vnet1_ip:
+        pytest.fail(f"Network connectivity test failed: {e}")
+        pytest.fail(f"Failed to get ext3 IP for deployment '{deployment_name}': {e}")
+    vnet2_ip = get_kubevirtvm_ip_from_user_data(kubevirtvm_name, namespace)
+    if not vnet2_ip:
+        pytest.fail(f"Network connectivity test failed: {e}")            
+        pytest.fail(f"Failed to get ext3 IP for deployment '{kubevirtvm_name}': {e}")
+    #vnet2_ip = helm_values['workloads']['kubevirtvm']['sriovnet']['rangeStart']
 
     # Get Vnet1 pod name
     pods = v1.list_namespaced_pod(namespace)
