@@ -88,10 +88,10 @@ def get_pod_ext0_ip(deployment_name, namespace):
     try:
         # Get the label selector for the deployment
         deployment = apps_v1.read_namespaced_deployment(deployment_name, namespace)
-        #label_selector = ",".join([f"{k}={v}" for k, v in deployment.spec.selector.match_labels.items()])
+        label_selector = ",".join([f"{k}={v}" for k, v in deployment.spec.selector.match_labels.items()])
 
         # List pods matching the label selector
-        pods = v1.list_namespaced_pod(namespace)
+        pods = v1.list_namespaced_pod(namespace, label_selector=label_selector)
         if not pods.items:
             pytest.fail(f"No pods found for deployment '{deployment_name}' in namespace '{namespace}'")
 
