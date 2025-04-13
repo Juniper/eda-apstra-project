@@ -127,12 +127,13 @@ def get_kubevirtvm_ip_from_user_data(kubevirtvm_name, namespace):
         )
 
         # Extract the userData from the cloudInitConfigDrive volume
-        volumes = kubevirtvm.get("spec", {}).get("volumes", [])
+        volumes = kubevirtvm.get("spec", {}).get("spec", {}).get("volumes", [])
+        if not volumes:
+            pytest.fail(f"No volumes found for KubeVirt VM '{kubevirtvm_name}'")
         for volume in volumes:
             if "cloudInitConfigDrive" in volume:
                 user_data = volume["cloudInitConfigDrive"].get("userData", "")
                 if user_data:
-                    import yaml
                     cloud_config = yaml.safe_load(user_data)
                     network_config = cloud_config.get("write_files", [])[0].get("content", "")
                     network_data = yaml.safe_load(network_config)
