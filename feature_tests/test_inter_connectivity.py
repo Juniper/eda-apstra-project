@@ -129,7 +129,7 @@ def get_kubevirtvm_ip_from_user_data(kubevirtvm_name, namespace):
             pytest.fail(f"KubeVirt VM '{kubevirtvm_name}' not found in namespace '{namespace}'")
 
         # Extract the userData from the cloudInitConfigDrive volume
-        volumes = kubevirtvm.get("spec", {}).get("spec", {}).get("volumes", [])
+        volumes = kubevirtvm.get("spec", {}).get("template", {}).get("spec", {}).get("volumes", [])
         if not volumes:
             pytest.fail(f"No volumes found for KubeVirt VM '{kubevirtvm_name}'")
         for volume in volumes:
