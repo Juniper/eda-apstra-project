@@ -2,6 +2,7 @@ import pytest
 import yaml
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
+from kubernetes.stream import stream
 import subprocess
 import time
 import json
@@ -177,7 +178,7 @@ def test_network_connectivity(deploy_helm_chart):
     # Execute ping command from Vnet1 pod to Vnet2 IP
     ping_command = ["ping", "-c", "3", vnet2_ip]
     try:
-        resp = v1.connect_get_namespaced_pod_exec(
+        resp = stream(v1.connect_get_namespaced_pod_exec,
             vnet1_pod_name, namespace,
             command=ping_command,
             stderr=True, stdin=False,
