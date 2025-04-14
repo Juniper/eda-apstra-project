@@ -179,7 +179,8 @@ def test_network_connectivity(deploy_helm_chart):
     ping_command = ["ping", "-c", "3", vnet2_ip]
     try:
         resp = stream(v1.connect_get_namespaced_pod_exec,
-            vnet1_pod_name, namespace,
+            name=vnet1_pod_name, 
+            namespace=namespace,
             command=ping_command,
             stderr=True, stdin=False,
             stdout=True, tty=False
