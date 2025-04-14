@@ -6,7 +6,7 @@ metadata:
   labels:
     kubevirt.io/size: large
     kubevirt.io/domain: kubevirt-vn2
-    #type: eda
+    type: eda
 spec:
   running: true
   template:
@@ -14,7 +14,7 @@ spec:
       labels: 
         kubevirt.io/size: large
         kubevirt.io/domain: kubevirt-vn2
-        #type: eda
+        type: eda
       annotations:
         apstra.juniper.net/ep: '[
           {
@@ -114,5 +114,5 @@ spec:
   selector:
     kubevirt.io/size: large
     kubevirt.io/domain: {{ .Values.workloads.kubevirtvm.name }}
-    #type: eda
+    type: eda
   type: NodePort
