@@ -175,7 +175,27 @@ def test_network_connectivity(deploy_helm_chart):
         pytest.fail(f"No pods found for deployment '{deployment_name}' in namespace '{namespace}'")
     vnet1_pod_name = pods.items[0].metadata.name
 
-    # Execute ping command from Vnet1 pod to Vnet2 IP
+    # Retry ping command from Vnet1 pod to Vnet2 IP with interval of 10 seconds for 10 minutes
+    max_retries = 60  # 10 minutes / 10 seconds
+    wait_seconds = 10  # Interval between retries
+
+    for attempt in range(max_retries):
+        ping_command = ["ping", "-c", "3", vnet2_ip]
+        try:
+            resp = k8s_stream(v1.connect_get_namespaced_pod_exec,
+                              vnet1_pod_name, namespace,
+                              command=ping_command,
+                              stderr=True, stdin=False,
+                              stdout=True, tty=False
+            )
+            if "3 packets transmitted, 3 received" in resp:
+                break  # Exit the loop if ping is successful
+        except ApiException as e:
+            if attempt == max_retries - 1:  # Last attempt
+                pytest.fail(f"Network connectivity test failed after retries: {e}")
+        time.sleep(wait_seconds)  # Wait before retrying
+    else:
+        pytest.fail("Network connectivity test failed: Ping did not succeed within the retry period.")
     ping_command = ["ping", "-c", "3", vnet2_ip]
     try:
         resp = k8s_stream(v1.connect_get_namespaced_pod_exec,
