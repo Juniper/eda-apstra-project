@@ -18,13 +18,13 @@ spec:
       annotations:
         apstra.juniper.net/ep: '[
           {
-            "vnetName": {{ .Values.workloads.kubevirtvm.vnet }}
+            "vnetName": {{ quote .Values.workloads.kubevirtvm.vnet }}
           }
         ]'
         k8s.v1.cni.cncf.io/networks: '[
           {
-            "name": {{ .Values.workloads.kubevirtvm.sriovnet.name }},
-            "namespace": {{ .Values.project }}
+            "name": {{ quote .Values.workloads.kubevirtvm.sriovnet.name }},
+            "namespace": {{ quote .Values.project }}
           }
         ]'
     spec:
