@@ -1,6 +1,7 @@
 import pytest
 import yaml
-from kubernetes import client, config, stream
+from kubernetes import client, config
+from kubernetes.stream import stream as k8s_stream 
 from kubernetes.client.rest import ApiException
 import subprocess
 import time
@@ -177,7 +178,7 @@ def test_network_connectivity(deploy_helm_chart):
     # Execute ping command from Vnet1 pod to Vnet2 IP
     ping_command = ["ping", "-c", "3", vnet2_ip]
     try:
-        resp = stream.stream(v1.connect_get_namespaced_pod_exec,
+        resp = k8s_stream(v1.connect_get_namespaced_pod_exec,
                              vnet1_pod_name, namespace,
                              command=ping_command,
                              stderr=True, stdin=False,
