@@ -253,22 +253,21 @@
         sz_tags: "{{ (annotations['apstra.juniper.net/ep'] | regex_search('\"tags\": \"([^\"]+)\"', '\\1') | first) | string }}"
       when: annotations['apstra.juniper.net/ep'] is defined and 'tags' in annotations['apstra.juniper.net/ep']
  
-    - name: Get Kubernetes cluster name for current context
-      ansible.builtin.command: >
-        kubectl config current-context
+    - name: Get Kubernetes cluster name using kubectl
+      ansible.builtin.command: kubectl config get-clusters
       register: kubectl_output
       changed_when: false
       ignore_errors: true
 
-    - name: Set cluster name
+    - name: Extract cluster name
       ansible.builtin.set_fact:
-        cluster_name: "{{ kubectl_output.stdout | default('undefined') }}"
-      when: kubectl_output.rc == 0 and kubectl_output.stdout is defined and kubectl_output.stdout != ''
+        cluster_name: "{{ kubectl_output.stdout_lines | select('match', '^[a-zA-Z].*') | first | default('undefined') }}"
+      when: kubectl_output.rc == 0 and kubectl_output.stdout_lines is defined and (kubectl_output.stdout_lines | select('match', '^[a-zA-Z].*') | list | length > 0)
 
     - name: Set cluster name to undefined on failure
       ansible.builtin.set_fact:
         cluster_name: "undefined"
-      when: kubectl_output.rc != 0 or kubectl_output.stdout is not defined or kubectl_output.stdout == ''
+      when: kubectl_output.rc != 0 or kubectl_output.stdout_lines is not defined or (kubectl_output.stdout_lines | select('match', '^[a-zA-Z].*') | list | length == 0)
 
     - name: Display cluster name
       ansible.builtin.debug:
