@@ -253,13 +253,30 @@
         sz_tags: "{{ (annotations['apstra.juniper.net/ep'] | regex_search('\"tags\": \"([^\"]+)\"', '\\1') | first) | string }}"
       when: annotations['apstra.juniper.net/ep'] is defined and 'tags' in annotations['apstra.juniper.net/ep']
  
-    - name: Get Kubernetes cluster information
-      kubernetes.core.k8s_cluster_info:
-      register: cluster_info
+    - name: Get Kubernetes cluster name for current context
+      ansible.builtin.command: >
+        kubectl config view --minify -o jsonpath='{.clusters[0].name}'
+      register: kubectl_output
+      changed_when: false
+      ignore_errors: true
+
+    - name: Set cluster name
+      ansible.builtin.set_fact:
+        cluster_name: "{{ kubectl_output.stdout | default('undefined') }}"
+      when: kubectl_output.rc == 0 and kubectl_output.stdout is defined and kubectl_output.stdout != ''
+
+    - name: Set cluster name to undefined on failure
+      ansible.builtin.set_fact:
+        cluster_name: "undefined"
+      when: kubectl_output.rc != 0 or kubectl_output.stdout is not defined or kubectl_output.stdout == ''
+
+    - name: Display cluster name
+      ansible.builtin.debug:
+        msg: "Cluster name: {{ cluster_name }}"
 
     - name: Set sz_tags to None if tags are not present
       set_fact:
-        sz_tags: ["source=eda", "cluster_name={{ cluster_info.result.cluster }}","vlan_id={{ vlan_id }}"]
+        sz_tags: ["source=eda", "cluster_name={{ cluster_name }}","vlan_id={{ vlan_id }}"]
       when: annotations['apstra.juniper.net/ep'] is not defined or 'tags' not in annotations['apstra.juniper.net/ep']
 
     - name: Create tags if sz_tags is defined and is a list
