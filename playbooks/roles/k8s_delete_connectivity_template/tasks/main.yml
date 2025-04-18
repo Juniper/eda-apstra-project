@@ -46,7 +46,12 @@
   set_fact:
     pci_addresses: >-
       {{
-        pod_annotations['k8s.v1.cni.cncf.io/network-status'] | from_json | selectattr('name', 'ne', 'ovn-kubernetes') | selectattr('device-info.type', 'eq', 'pci') | map(attribute='device-info.pci.pci-address') | list
+        pod_annotations['k8s.v1.cni.cncf.io/network-status'] | from_json 
+        | rejectattr('name', 'in', ['ovn-kubernetes', 'k8s-pod-network']) 
+        | selectattr('device-info', 'defined') 
+        | selectattr('device-info.type', 'eq', 'pci') 
+        | map(attribute='device-info.pci.pci-address') 
+        | list
       }}
 
 - name: Debug PCI addresses
