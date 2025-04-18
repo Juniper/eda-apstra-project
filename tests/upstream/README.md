@@ -385,13 +385,14 @@ unmanaged-devices=interface-name:enp94s0f0;interface-name:lo;interface-name:eno1
 
 ### Step 2
 Install NMState Operator
-
+```bash
 kubectl apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/v0.83.0/nmstate.io_nmstates.yaml
 kubectl apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/v0.83.0/namespace.yaml
 kubectl apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/v0.83.0/service_account.yaml
 kubectl apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/v0.83.0/role.yaml
 kubectl apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/v0.83.0/role_binding.yaml
 kubectl apply -f https://github.com/nmstate/kubernetes-nmstate/releases/download/v0.83.0/operator.yaml
+```
 
 ### Step 3
 Once that's done, create an NMState CR, triggering deployment of kubernetes-nmstate handler:
