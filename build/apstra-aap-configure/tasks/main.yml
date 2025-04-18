@@ -109,7 +109,7 @@
     validate_certs: false
     organization: "{{ organization_name }}"
     inputs:
-      host: "{{ openshift_host }}"
+      host: "{{ kubernetes_host }}"
       bearer_token: "{{ lookup('file', 'files/openshift-sa.token') }}"
       verify_ssl: false 
       ssl_ca_cert: "{{ lookup('file', 'files/openshift-ca.crt') }}"

@@ -5,6 +5,8 @@
 ## Overview
 This project leverages **OpenShift 4.17** and **Red Hat Ansible Automation Platform 2.5** to automate workflows, streamline decision-making, and activate rulebooks. This document explains installation and use of Ansible Automation Platform with  Automation Decisions, Automation Execution Below is a step-by-step guide to setting up the environment and utilizing the platform's features effectively.
 
+## Notes: For running Apstra EDA for upstream kubernetes use [this](./tests/upstream/README.md) documentation.
+
 ## Prerequisites
 1. **OpenShift 4.17** environment set up and configured.
 2. **Ansible Automation Platform 2.5** operator installed and configured.
