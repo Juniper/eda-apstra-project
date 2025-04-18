@@ -8,7 +8,7 @@ organization_name: "Default"
 project_url: "https://github.com/Juniper/eda-apstra-project.git" 
 project_scm_branch: "main"
 apstra_blueprint_name: "eda-bp"
-openshift_host: "https://api.ocpapstra-lab.englab.juniper.net:6443"
+kubernetes_host: "https://api.ocpapstra-lab.englab.juniper.net:6443"
 
 # Ansible Automation Controller(Ansible Tower) Configuration
 automation_controller_host: "https://aap-controller-aap.apps.ocpapstra-lab.englab.juniper.net/"
