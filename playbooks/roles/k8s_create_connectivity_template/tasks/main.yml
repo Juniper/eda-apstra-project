@@ -255,7 +255,7 @@
  
     - name: Get Kubernetes cluster name for current context
       ansible.builtin.command: >
-        kubectl config view --minify -o jsonpath='{.clusters[0].name}'
+        kubectl config current-context
       register: kubectl_output
       changed_when: false
       ignore_errors: true
