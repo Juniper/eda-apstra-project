@@ -12,7 +12,7 @@
     - name: Get blueprint -- no change
       juniper.apstra.blueprint:
         body:
-          label: "{{ blueprint_name }}"
+          label: "blueprint1"
           design: "freeform"
         lock_state: "ignore"
         auth_token: "{{ auth.token }}"
