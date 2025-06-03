@@ -1,0 +1,30 @@
+---
+- name: Test create Blueprint
+  hosts: localhost
+  gather_facts: false
+  connection: local
+  tasks:
+    - name: Get local hostname
+      ansible.builtin.command: hostname
+      register: local_hostname
+      changed_when: false
+
+    - name: Connect to Apstra
+      juniper.apstra.authenticate:
+        logout: false
+      register: auth
+
+    - name: Create blueprint
+      juniper.apstra.blueprint:
+        body:
+          template_id: "L2_Virtual_EVPN"
+          design: "two_stage_l3clos"
+          init_type: "template_reference"
+          label: "blueprint1"
+        lock_state: "ignore"
+        auth_token: "{{ auth.token }}"
+      register: bp
+
+    - name: Show created blueprint
+      ansible.builtin.debug:
+        var: bp
