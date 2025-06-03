@@ -1,0 +1,34 @@
+---
+- name: Test create/delete blueprint
+  hosts: localhost
+  gather_facts: false
+  connection: local
+  tasks:
+    - name: Connect to Apstra
+      juniper.apstra.authenticate:
+        logout: false
+      register: auth
+
+    - name: Create blueprint
+      juniper.apstra.blueprint:
+        body:
+          label: "blueprint1"
+          design: "freeform"
+        lock_state: "locked"
+        auth_token: "{{ auth.token }}"
+      register: blueprint_create
+
+    - name: Show created blueprint
+      ansible.builtin.debug:
+        var: blueprint_create
+
+    - name: Delete blueprint
+      juniper.apstra.blueprint:
+        id: "{{ blueprint_create.id }}"
+        state: absent
+        auth_token: "{{ auth.token }}"
+      register: blueprint_delete
+
+    - name: Show deleted blueprint
+      ansible.builtin.debug:
+        var: blueprint_delete
