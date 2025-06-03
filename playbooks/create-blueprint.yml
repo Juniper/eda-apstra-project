@@ -4,11 +4,6 @@
   gather_facts: false
   connection: local
   tasks:
-    - name: Get local hostname
-      ansible.builtin.command: hostname
-      register: local_hostname
-      changed_when: false
-
     - name: Connect to Apstra
       juniper.apstra.authenticate:
         logout: false
