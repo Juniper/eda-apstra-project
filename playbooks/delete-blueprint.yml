@@ -9,12 +9,12 @@
         logout: false
       register: auth
 
-    - name: Create blueprint
+    - name: Get blueprint -- no change
       juniper.apstra.blueprint:
         body:
-          label: "blueprint1"
+          label: "{{ blueprint_name }}"
           design: "freeform"
-        lock_state: "locked"
+        lock_state: "ignore"
         auth_token: "{{ auth.token }}"
       register: blueprint_create
 
