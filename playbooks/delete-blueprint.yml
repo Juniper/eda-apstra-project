@@ -9,22 +9,21 @@
         logout: false
       register: auth
 
-    - name: Get blueprint -- no change
+    - name: Get blueprint
       juniper.apstra.blueprint:
         body:
-          label: "blueprint1"
-          design: "freeform"
-        lock_state: "ignore"
+          label: "{{ bluprint_label_value }}"
         auth_token: "{{ auth.token }}"
-      register: blueprint_create
+        lock_state: "ignore"
+      register: register_bp
 
-    - name: Show created blueprint
+    - name: Show blueprint
       ansible.builtin.debug:
-        var: blueprint_create
+        var: register_bp
 
     - name: Delete blueprint
       juniper.apstra.blueprint:
-        id: "{{ blueprint_create.id }}"
+        id: "{{ register_bp.id }}"
         state: absent
         auth_token: "{{ auth.token }}"
       register: blueprint_delete
