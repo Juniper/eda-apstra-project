@@ -12,7 +12,7 @@ This project leverages **OpenShift 4.17** and **Red Hat Ansible Automation Platf
 2. **Ansible Automation Platform 2.5** operator installed and configured.
 3. **Kubernetes NMState** operator installed and lldp configured on the nodes.
 4. **OpenShift SR-IOV Network** operator installed.
-5. Juniper Apstra 5.0 or 5.1
+5. Juniper Apstra 5.0,5.1 and 6.0
 6. Access to Juniper public Git repository containing the automation project files.
 
 ## Notes:
