@@ -1,0 +1,96 @@
+---
+# roles/ntx_create_virtual_network/tasks/main.yml
+- name: Get blueprint name from ConfigMap
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: ConfigMap
+    name: ansible-tower-config
+    namespace: default
+  register: config_map_info
+
+- name: Extract blueprint name from ConfigMap
+  set_fact:
+    blueprint_name: "{{ config_map_info.resources[0].data['ansible_config.ini'] | regex_search('blueprint_name = \"([^\"]+)\"', '\\1') | first }}"
+  when: config_map_info.resources | length > 0
+
+- name: Print blueprint_name from ConfigMap
+  debug:
+    msg: "Blueprint name from ConfigMap: {{ blueprint_name }}"
+
+- name: Print Nutanix event details
+  debug:
+    msg: 
+      - "Event Type: {{ nutanix_event.event_type }}"
+      - "Entity Type: {{ nutanix_event.entity_type }}"
+      - "Timestamp: {{ nutanix_event.timestamp }}"
+  when: nutanix_event is defined
+
+- name: Check if this is a deletion event
+  ansible.builtin.set_fact:
+    is_deletion: "{{ nutanix_event.event_type == 'DELETED' }}"
+  when: nutanix_event is defined
+
+- name: Exit if this is a deletion event
+  ansible.builtin.meta: end_play
+  when: is_deletion | default(false)
+
+- name: Extract subnet information from Nutanix event
+  set_fact:
+    vnet_name: "{{ entity.name }}"
+    vnet_uuid: "{{ entity.uuid }}"
+    vlan_id: "{{ subnet.vlan_id }}"
+    subnet_ip: "{{ subnet.subnet_ip }}"
+    prefix_length: "{{ subnet.prefix_length }}"
+    subnet_cidr: "{{ subnet.subnet_ip }}/{{ subnet.prefix_length }}"
+    gateway_ip: "{{ subnet.default_gateway_ip }}"
+    vswitch_name: "{{ subnet.vswitch_name }}"
+    subnet_type: "{{ subnet.subnet_type }}"
+  when: 
+    - nutanix_event is defined
+    - entity is defined
+    - subnet is defined
+
+- name: Print extracted Nutanix subnet details
+  debug:
+    msg:
+      - "Virtual Network Name: {{ vnet_name | default('undefined') }}"
+      - "VLAN ID: {{ vlan_id | default('undefined') }}"
+      - "Subnet CIDR: {{ subnet_cidr | default('undefined') }}"
+      - "Gateway IP: {{ gateway_ip | default('undefined') }}"
+      - "vSwitch Name: {{ vswitch_name | default('undefined') }}"
+      - "Subnet Type: {{ subnet_type | default('undefined') }}"
+
+- name: Set the blueprint name
+  set_fact:
+    blueprint_label_value: "{{ blueprint_name }}"
+
+# - name: Connect to Apstra
+#   juniper.apstra.authenticate:
+#     verify_certificates: false
+#     logout: false
+#   register: auth
+
+# - name: Get blueprint
+#   juniper.apstra.blueprint:
+#     body:
+#       label: "{{ blueprint_label_value }}"
+#     auth_token: "{{ auth.token }}"
+#     lock_state: "ignore"
+#   register: register_bp
+
+- name: Debug Nutanix virtual network data
+  debug:
+    msg: "Processing Nutanix subnet: {{ vnet_name }} with VLAN {{ vlan_id }}"
+  when: vnet_name is defined
+
+- name: Debug all extracted values
+  debug:
+    msg: 
+      - "Blueprint Name: {{ blueprint_name | default('undefined') }}"
+      - "VNet Name: {{ vnet_name | default('undefined') }}"
+      - "VLAN ID: {{ vlan_id | default('undefined') }}"
+      - "Subnet CIDR: {{ subnet_cidr | default('undefined') }}"
+      - "Gateway IP: {{ gateway_ip | default('undefined') }}"
+
+# TODO: Add Nutanix-to-Apstra virtual network integration logic here
+# This role will handle mapping Nutanix subnet events to Apstra virtual networks

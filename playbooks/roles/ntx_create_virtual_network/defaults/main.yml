@@ -1,0 +1,27 @@
+---
+# roles/ntx_create_virtual_network/defaults/main.yml
+
+# Apstra connection details (should be provided via vault or environment)
+apstra_host: ""
+apstra_username: ""
+apstra_password: ""
+apstra_verify_certificates: false
+
+# ConfigMap details for blueprint name
+config_map_name: "ansible-tower-config"
+config_map_namespace: "default"
+
+# Processing defaults
+default_vnet_description: "Virtual network created from Nutanix subnet event"
+default_tags:
+  - "source=nutanix_eda"
+  - "managed_by=ansible"
+
+# Event handling
+supported_event_types:
+  - "CREATED"
+  - "MODIFIED"
+  - "DELETED"
+
+supported_entity_types:
+  - "SUBNET"

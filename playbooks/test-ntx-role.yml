@@ -1,0 +1,10 @@
+---
+- name: Test NTX Create Virtual Network Role
+  hosts: localhost
+  gather_facts: false
+  connection: local
+
+  tasks:
+    - name: Include ntx_create_virtual_network role
+      include_role:
+        name: ntx_create_virtual_network

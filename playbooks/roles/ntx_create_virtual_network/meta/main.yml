@@ -1,0 +1,21 @@
+---
+galaxy_info:
+  author: Pratik D
+  description: Role for processing Nutanix subnet events and creating corresponding virtual networks in Apstra
+  company: Juniper Networks
+  license: MIT
+  min_ansible_version: "2.9"
+  platforms:
+    - name: EL
+      versions:
+        - all
+  galaxy_tags:
+    - nutanix
+    - virtual_network
+    - networking
+    - apstra
+    - eda
+    - event_driven
+
+dependencies: []
+# Note: juniper.apstra collection should be installed separately

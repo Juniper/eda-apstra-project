@@ -1,0 +1,15 @@
+---
+# roles/ntx_create_virtual_network/vars/main.yml
+
+# Note: nutanix_event, entity, and subnet variables are provided by EDA
+# No need to define them here - they will be available automatically
+
+# Internal processing variables (computed from EDA event data in tasks)
+# These are documented here for reference but set dynamically:
+# - vnet_name (extracted from entity.name)
+# - vnet_uuid (extracted from entity.uuid) 
+# - vlan_id (extracted from subnet.vlan_id)
+# - subnet_cidr (computed from subnet.subnet_ip/prefix_length)
+# - gateway_ip (extracted from subnet.default_gateway_ip)
+# - blueprint_name (retrieved from ConfigMap)
+# - is_deletion (computed from nutanix_event.event_type)

@@ -1,0 +1,18 @@
+---
+# roles/ntx_create_virtual_network/handlers/main.yml
+
+- name: Commit blueprint changes
+  juniper.apstra.blueprint:
+    id: "{{ blueprint_id }}"
+    lock_state: "ignore"
+    state: committed
+    auth_token: "{{ auth.token }}"
+  when: blueprint_id is defined and auth.token is defined
+
+- name: Unlock blueprint
+  juniper.apstra.blueprint:
+    id: "{{ blueprint_id }}"
+    lock_state: "unlocked"
+    state: committed
+    auth_token: "{{ auth.token }}"
+  when: blueprint_id is defined and auth.token is defined
