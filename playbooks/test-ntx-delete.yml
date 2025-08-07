@@ -1,0 +1,9 @@
+---
+- name: Test NTX Delete Virtual Network Role
+  hosts: localhost
+  gather_facts: false
+  connection: local
+  tasks:
+    - name: Include ntx_delete_virtual_network role
+      include_role:
+        name: ntx_delete_virtual_network

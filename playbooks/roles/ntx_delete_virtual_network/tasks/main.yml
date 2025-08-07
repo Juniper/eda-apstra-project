@@ -1,0 +1,160 @@
+---
+# roles/ntx_delete_virtual_network/tasks/main.yml
+- name: Get blueprint name from ConfigMap
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: ConfigMap
+    name: ansible-tower-config
+    namespace: default
+  register: config_map_info
+
+- name: Extract blueprint name from ConfigMap
+  set_fact:
+    blueprint_name: "{{ config_map_info.resources[0].data['ansible_config.ini'] | regex_search('blueprint_name = \"([^\"]+)\"', '\\1') | first }}"
+  when: config_map_info.resources | length > 0
+
+- name: Print blueprint_name from ConfigMap
+  debug:
+    msg: "Blueprint name from ConfigMap: {{ blueprint_name }}"
+
+- name: Print Nutanix deletion event details
+  debug:
+    msg: 
+      - "Event Type: {{ nutanix_event.event_type }}"
+      - "Entity Type: {{ nutanix_event.entity_type }}"
+      - "Timestamp: {{ nutanix_event.timestamp }}"
+  when: nutanix_event is defined
+
+- name: Check if this is a deletion event
+  ansible.builtin.set_fact:
+    is_deletion: "{{ nutanix_event.event_type == 'DELETED' }}"
+  when: nutanix_event is defined
+
+- name: Exit if this is not a deletion event
+  ansible.builtin.meta: end_play
+  when: not (is_deletion | default(false))
+
+- name: Extract subnet information from Nutanix deletion event
+  set_fact:
+    vnet_name: "{{ entity.name.strip() }}"  # Strip whitespace from name
+    vnet_uuid: "{{ entity.uuid }}"
+    vlan_id: "{{ subnet.vlan_id | int }}"
+    subnet_ip: "{{ subnet.subnet_ip }}"
+    prefix_length: "{{ subnet.prefix_length }}"
+    subnet_cidr: "{{ subnet.subnet_ip }}/{{ subnet.prefix_length }}"
+    gateway_ip: "{{ subnet.default_gateway_ip }}"
+    vswitch_name: "{{ subnet.vswitch_name }}"
+    subnet_type: "{{ subnet.subnet_type }}"
+  when: 
+    - nutanix_event is defined
+    - entity is defined
+    - subnet is defined
+
+- name: Print extracted Nutanix subnet details for deletion
+  debug:
+    msg:
+      - "Virtual Network Name: '{{ vnet_name | default('undefined') }}'"
+      - "VLAN ID: {{ vlan_id | default('undefined') }}"
+      - "Subnet CIDR: {{ subnet_cidr | default('undefined') }}"
+      - "Gateway IP: {{ gateway_ip | default('undefined') }}"
+      - "vSwitch Name: {{ vswitch_name | default('undefined') }}"
+
+- name: Set the blueprint name
+  set_fact:
+    blueprint_label_value: "{{ blueprint_name }}"
+
+- name: Debug virtual network deletion
+  debug:
+    msg: "Deleting Nutanix subnet: '{{ vnet_name }}' with VLAN {{ vlan_id }}"
+  when: vnet_name is defined
+
+- name: Connect to Apstra for virtual network deletion
+  juniper.apstra.authenticate:
+    verify_certificates: false
+    logout: false
+  register: auth
+  when: vnet_name is defined
+
+- block:
+    - name: Get blueprint for virtual network deletion
+      juniper.apstra.blueprint:
+        body:
+          label: "{{ blueprint_label_value }}"
+        auth_token: "{{ auth.token }}"
+        lock_state: "ignore"
+      register: register_bp
+
+    - name: Get the virtual network to delete by label
+      juniper.apstra.virtual_network:
+        id: "{{ register_bp.id }}"
+        body:
+          label: "{{ vnet_name }}"
+        auth_token: "{{ auth.token }}"
+      register: vn_to_delete
+
+    - name: Display virtual network found for deletion
+      debug:
+        msg: "Found virtual network: {{ vn_to_delete }}"
+
+    - name: Delete the virtual network from Apstra
+      juniper.apstra.virtual_network:
+        id: "{{ vn_to_delete.id }}" 
+        state: absent
+        auth_token: "{{ auth.token }}"
+      register: vn_delete
+      retries: 3
+      delay: 5
+      until: not vn_delete.failed
+
+    - name: Display deletion result
+      debug:
+        msg: "Virtual network '{{ vnet_name }}' deleted successfully"
+      when: vn_delete is succeeded
+
+    - name: Delete associated ConfigMap if exists
+      kubernetes.core.k8s:
+        state: absent
+        api_version: v1
+        kind: ConfigMap
+        namespace: juniper-apstra-eda
+        name: "{{ vnet_name }}"
+      register: configmap_delete
+      ignore_errors: yes
+
+  rescue:
+    - name: Handle deletion failure
+      debug:
+        msg: "Failed to delete virtual network '{{ vnet_name }}': {{ ansible_failed_result.msg | default('Unknown error') }}"
+
+    - name: Unlock the blueprint on failure
+      juniper.apstra.blueprint:
+        id: "{{ register_bp.id }}"
+        lock_state: "unlocked"
+        state: committed
+        auth_token: "{{ auth.token }}"
+      register: blueprint_unlock
+      when: register_bp is defined
+
+  always:
+    - name: Unlock the blueprint
+      juniper.apstra.blueprint:
+        id: "{{ register_bp.id }}"
+        lock_state: "unlocked"
+        state: committed
+        auth_token: "{{ auth.token }}"
+      register: blueprint_unlock
+      when: register_bp is defined
+
+    - name: Commit the blueprint
+      juniper.apstra.blueprint:
+        id: "{{ register_bp.id }}"
+        lock_state: "ignore"
+        state: committed
+        auth_token: "{{ auth.token }}"
+      register: blueprint_commit
+      when: register_bp is defined
+
+  when: 
+    - auth is defined 
+    - auth.token is defined
+    - vnet_name is defined

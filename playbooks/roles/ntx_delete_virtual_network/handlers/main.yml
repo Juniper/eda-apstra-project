@@ -1,0 +1,20 @@
+---
+# roles/ntx_delete_virtual_network/handlers/main.yml
+
+- name: Verify virtual network deletion
+  juniper.apstra.virtual_network:
+    id: "{{ register_bp.id }}"
+    body:
+      label: "{{ vnet_name }}"
+    auth_token: "{{ auth.token }}"
+  register: verify_deletion
+  failed_when: false  # Don't fail if network doesn't exist (expected)
+  when: vnet_name is defined and register_bp is defined
+
+- name: Final blueprint commit after deletion
+  juniper.apstra.blueprint:
+    id: "{{ register_bp.id }}"
+    lock_state: "ignore"
+    state: committed
+    auth_token: "{{ auth.token }}"
+  when: register_bp is defined and auth.token is defined
