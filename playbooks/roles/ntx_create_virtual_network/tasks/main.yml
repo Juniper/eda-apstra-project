@@ -38,7 +38,7 @@
   set_fact:
     vnet_name: "{{ entity.name }}"
     vnet_uuid: "{{ entity.uuid }}"
-    vlan_id: "{{ subnet.vlan_id }}"
+    vlan_id: "{{ subnet.vlan_id | int }}"
     subnet_ip: "{{ subnet.subnet_ip }}"
     prefix_length: "{{ subnet.prefix_length }}"
     subnet_cidr: "{{ subnet.subnet_ip }}/{{ subnet.prefix_length }}"
@@ -184,20 +184,24 @@
   loop_control:
     loop_var: tag
 
-- name: Prepare virtual network data for Apstra
+- name: Prepare virtual network data for Apstra (preserving integer types)
   ansible.builtin.set_fact:
-    vnet_apstra_data:
-      label: "{{ vnet_name }}"
-      security_zone_id: "{{ sz.id.security_zone }}"
-      ipv4_subnet: "{{ subnet_cidr }}"
-      virtual_gateway_ipv4: "{{ gateway_ip }}"
-      reserved_vlan_id: "{{ vlan_id | int }}"
-      ipv4_enabled: true
-      virtual_gateway_ipv4_enabled: true
-      vn_type: "vxlan"
-      create_policy_tagged: true
-      svi_ips: "{{ svi_ips }}"
-      bound_to: "{{ bound_to }}"
+    vnet_apstra_data: >-
+      {{
+        {
+          'label': vnet_name,
+          'security_zone_id': sz.id.security_zone,
+          'ipv4_subnet': subnet_cidr,
+          'virtual_gateway_ipv4': gateway_ip,
+          'reserved_vlan_id': vlan_id | int,
+          'ipv4_enabled': true,
+          'virtual_gateway_ipv4_enabled': true,
+          'vn_type': 'vxlan',
+          'create_policy_tagged': true,
+          'svi_ips': svi_ips,
+          'bound_to': bound_to
+        } | to_json | from_json
+      }}
   when: 
     - sz is defined
     - svi_ips is defined
