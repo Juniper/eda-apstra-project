@@ -92,5 +92,138 @@
       - "Subnet CIDR: {{ subnet_cidr | default('undefined') }}"
       - "Gateway IP: {{ gateway_ip | default('undefined') }}"
 
-# TODO: Add Nutanix-to-Apstra virtual network integration logic here
-# This role will handle mapping Nutanix subnet events to Apstra virtual networks
+# Nutanix-to-Apstra virtual network integration
+# All Nutanix VNets will be created in 'ntx-sz' security zone
+
+- name: Connect to Apstra for virtual network creation
+  juniper.apstra.authenticate:
+    verify_certificates: false
+    logout: false
+  register: auth
+  when: vnet_name is defined
+
+- name: Get blueprint for virtual network operations
+  juniper.apstra.blueprint:
+    body:
+      label: "{{ blueprint_label_value }}"
+    auth_token: "{{ auth.token }}"
+    lock_state: "ignore"
+  register: register_bp
+  when: auth is defined and auth.token is defined
+
+- name: Get or create ntx-sz security zone
+  juniper.apstra.security_zone:
+    id: "{{ register_bp.id }}"
+    body:
+      label: "ntx-sz"
+      vrf_name: "ntx-sz"
+    auth_token: "{{ auth.token }}"
+  register: sz
+  when: register_bp is defined
+
+- name: Get blueprint topology for leaf nodes
+  juniper.apstra.apstra_facts:
+    id: "{{ register_bp.id }}"
+    auth_token: "{{ auth.token }}"
+    gather_network_facts:
+      - 'blueprints.nodes'
+  register: apstra_facts
+  when: register_bp is defined
+
+- name: Set blueprint ID fact
+  ansible.builtin.set_fact:
+    blueprint_id: "{{ register_bp.id.blueprint }}"
+  when: register_bp is defined
+
+- name: Extract list of leaf node IDs
+  ansible.builtin.set_fact:
+    node_ids: "{{ ansible_facts.apstra_facts.blueprints[blueprint_id].nodes | dict2items | json_query('[?value.role==`leaf`].key') }}"
+  when: apstra_facts is defined
+
+- name: Create svi_ips structure for leaf nodes
+  ansible.builtin.set_fact:
+    svi_ips: >-
+      {{
+        node_ids | map('community.general.dict_kv', 'system_id') | map('combine', {
+          'ipv4_mode': 'enabled',
+          'ipv4_addr': None,
+          'ipv6_mode': 'disabled',
+          'ipv6_addr': None
+        }) | list
+      }}
+  when: node_ids is defined
+
+- name: Create bound_to structure for leaf nodes
+  ansible.builtin.set_fact:
+    bound_to: >-
+      {{
+        node_ids | map('community.general.dict_kv', 'system_id') | map('combine', {
+          'access_switch_node_ids': []
+        }) | list
+      }}
+  when: node_ids is defined
+
+- name: Create tags for Nutanix virtual network
+  set_fact:
+    nutanix_tags:
+      - "source=nutanix_eda"
+      - "ntx_subnet={{ vnet_name }}"
+      - "vswitch={{ vswitch_name }}"
+      - "vlan_id={{ vlan_id }}"
+  when: vnet_name is defined
+
+- name: Create tags in Apstra
+  juniper.apstra.tag:
+    id: "{{ register_bp.id }}"
+    body:
+      label: "{{ tag }}"
+      description: "Nutanix EDA tag"
+    auth_token: "{{ auth.token }}"
+  when: nutanix_tags is defined
+  loop: "{{ nutanix_tags }}"
+  loop_control:
+    loop_var: tag
+
+- name: Prepare virtual network data for Apstra
+  ansible.builtin.set_fact:
+    vnet_apstra_data:
+      label: "{{ vnet_name }}"
+      security_zone_id: "{{ sz.id.security_zone }}"
+      ipv4_subnet: "{{ subnet_cidr }}"
+      virtual_gateway_ipv4: "{{ gateway_ip }}"
+      reserved_vlan_id: "{{ vlan_id | int }}"
+      ipv4_enabled: true
+      virtual_gateway_ipv4_enabled: true
+      vn_type: "vxlan"
+      create_policy_tagged: true
+      svi_ips: "{{ svi_ips }}"
+      bound_to: "{{ bound_to }}"
+  when: 
+    - sz is defined
+    - svi_ips is defined
+    - bound_to is defined
+
+- name: Create virtual network in Apstra
+  juniper.apstra.virtual_network:
+    id: "{{ register_bp.id }}"
+    body: "{{ vnet_apstra_data }}"
+    auth_token: "{{ auth.token }}"
+    tags: "{{ nutanix_tags }}"
+  register: vn_result
+  retries: 5
+  delay: 10
+  until: vn_result.failed == false
+  when: vnet_apstra_data is defined
+
+- name: Debug virtual network creation result
+  debug:
+    msg: "Successfully created Apstra virtual network: {{ vnet_name }} in ntx-sz security zone"
+  when: vn_result is defined and not vn_result.failed
+
+- name: Unlock and commit blueprint
+  juniper.apstra.blueprint:
+    id: "{{ register_bp.id }}"
+    lock_state: "unlocked"
+    state: committed
+    auth_token: "{{ auth.token }}"
+  when: vn_result is defined
