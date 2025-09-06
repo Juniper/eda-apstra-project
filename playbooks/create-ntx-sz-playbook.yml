@@ -1,0 +1,9 @@
+---
+- name: Test NTX Create Virtual Switch Role
+  hosts: localhost
+  gather_facts: false
+  connection: local
+  tasks:
+    - name: Include ntx_create_security_zone role
+      include_role:
+        name: ntx_create_security_zone

@@ -1,0 +1,17 @@
+---
+# Default variables for ntx_create_security_zone role
+
+# Security zone naming convention
+security_zone_prefix: "ntx"
+vrf_prefix: "vrf"
+
+# Default description templates
+default_sz_description: "Security zone for Nutanix virtual switch"
+default_rp_description: "Routing policy for Nutanix security zone"
+
+# Retry settings
+max_retries: 3
+retry_delay: 5
+
+# Tag settings
+tag_prefix: "nutanix_eda"

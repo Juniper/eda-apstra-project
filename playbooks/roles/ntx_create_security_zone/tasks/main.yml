@@ -1,0 +1,168 @@
+---
+# Nutanix Create Security Zone Role
+# Creates Apstra security zone when Nutanix virtual switch is created
+#
+# Expected variables:
+# - vswitch_name: Name of the virtual switch from Nutanix event
+# - vswitch_uuid: UUID of the virtual switch
+# - blueprint_label_value: Target Apstra blueprint label
+# - apstra_server: Apstra server URL
+# - apstra_username: Apstra username
+# - apstra_password: Apstra password
+
+- name: Debug Nutanix virtual switch event
+  debug:
+    msg: 
+      - "Processing virtual switch creation event"
+      - "Virtual Switch Name: {{ vswitch_name | default('undefined') }}"
+      - "Virtual Switch UUID: {{ vswitch_uuid | default('undefined') }}"
+      - "Blueprint Label: {{ blueprint_label_value | default('undefined') }}"
+  when: vswitch_name is defined
+
+- name: Fail if required variables are not defined
+  fail:
+    msg: "Required variable {{ item }} is not defined"
+  when: vars[item] is not defined
+  loop:
+    - vswitch_name
+    - blueprint_label_value
+    - apstra_server
+    - apstra_username
+    - apstra_password
+
+- name: Authenticate with Apstra
+  juniper.apstra.authenticate:
+    api_url: "{{ apstra_server }}"
+    username: "{{ apstra_username }}"
+    password: "{{ apstra_password }}"
+  register: auth
+  when: vswitch_name is defined
+
+- name: Get blueprint for security zone operations
+  juniper.apstra.blueprint:
+    body:
+      label: "{{ blueprint_label_value }}"
+    auth_token: "{{ auth.token }}"
+    lock_state: "ignore"
+  register: register_bp
+  when: auth is defined and auth.token is defined
+
+- name: Set blueprint ID fact
+  ansible.builtin.set_fact:
+    blueprint_id: "{{ register_bp.id.blueprint }}"
+  when: register_bp is defined
+
+- name: Generate security zone name from virtual switch
+  ansible.builtin.set_fact:
+    security_zone_name: "ntx-{{ vswitch_name | lower | regex_replace('[^a-z0-9]', '-') }}"
+    vrf_name: "vrf-{{ vswitch_name | lower | regex_replace('[^a-z0-9]', '-') }}"
+  when: vswitch_name is defined
+
+- name: Create tags for Nutanix virtual switch
+  set_fact:
+    nutanix_tags:
+      - "source=nutanix_eda"
+      - "vswitch_name={{ vswitch_name }}"
+      - "vswitch_uuid={{ vswitch_uuid }}"
+      - "entity_type=virtual_switch"
+      - "event_type=created"
+  when: vswitch_name is defined
+
+- name: Create tags in Apstra
+  juniper.apstra.tag:
+    id: "{{ register_bp.id }}"
+    body:
+      label: "{{ tag }}"
+      description: "Nutanix EDA virtual switch tag"
+    auth_token: "{{ auth.token }}"
+  when: nutanix_tags is defined
+  loop: "{{ nutanix_tags }}"
+  loop_control:
+    loop_var: tag
+  ignore_errors: true  # Tags may already exist
+
+- name: Check if security zone already exists
+  juniper.apstra.security_zone:
+    id: "{{ register_bp.id }}"
+    body:
+      label: "{{ security_zone_name }}"
+    auth_token: "{{ auth.token }}"
+    state: "get"
+  register: existing_sz
+  ignore_errors: true
+  when: security_zone_name is defined
+
+- name: Create security zone for virtual switch
+  juniper.apstra.security_zone:
+    id: "{{ register_bp.id }}"
+    body:
+      label: "{{ security_zone_name }}"
+      vrf_name: "{{ vrf_name }}"
+      description: "Security zone for Nutanix virtual switch {{ vswitch_name }}"
+    auth_token: "{{ auth.token }}"
+    tags: "{{ nutanix_tags }}"
+  register: sz_result
+  retries: 3
+  delay: 5
+  until: sz_result.failed == false
+  when: 
+    - security_zone_name is defined
+    - existing_sz.failed is defined and existing_sz.failed == true
+
+- name: Use existing security zone if already present
+  ansible.builtin.set_fact:
+    sz_result: "{{ existing_sz }}"
+  when: 
+    - existing_sz is defined
+    - existing_sz.failed is not defined or existing_sz.failed == false
+
+- name: Debug security zone creation result
+  debug:
+    msg: 
+      - "Security zone operation completed"
+      - "Security Zone Name: {{ security_zone_name }}"
+      - "VRF Name: {{ vrf_name }}"
+      - "Status: {{ 'Created' if (sz_result.changed | default(false)) else 'Already exists' }}"
+  when: sz_result is defined
+
+- name: Create routing policy for security zone (if needed)
+  juniper.apstra.routing_policy:
+    id: "{{ register_bp.id }}"
+    body:
+      label: "rp-{{ security_zone_name }}"
+      description: "Routing policy for {{ security_zone_name }}"
+      policy_type: "import"
+      statements:
+        - name: "allow-local"
+          action: "permit"
+          from:
+            - prefix_filter: "local"
+    auth_token: "{{ auth.token }}"
+    tags: "{{ nutanix_tags }}"
+  register: rp_result
+  ignore_errors: true
+  when: 
+    - sz_result is defined
+    - sz_result.changed | default(false)
+
+- name: Unlock and commit blueprint
+  juniper.apstra.blueprint:
+    id: "{{ register_bp.id }}"
+    lock_state: "unlocked"
+    state: committed
+    auth_token: "{{ auth.token }}"
+  when: 
+    - sz_result is defined
+    - (sz_result.changed | default(false)) or (rp_result.changed | default(false))
+
+- name: Final status report
+  debug:
+    msg:
+      - "=== Nutanix Virtual Switch Security Zone Creation Complete ==="
+      - "Virtual Switch: {{ vswitch_name }}"
+      - "Security Zone: {{ security_zone_name }}"
+      - "VRF: {{ vrf_name }}"
+      - "Blueprint: {{ blueprint_label_value }}"
+      - "UUID: {{ vswitch_uuid | default('N/A') }}"
+      - "Status: Success"
+  when: sz_result is defined

@@ -1,0 +1,15 @@
+---
+# Default variables for ntx_create_security_zone role
+# These can be overridden by the user
+
+# Blueprint settings
+blueprint_label_value: "apstra-datacenter"
+
+# Security zone settings
+create_routing_policy: true
+auto_commit_changes: true
+
+# Apstra connection settings (these should be overridden)
+apstra_server: "{{ ansible_apstra_server | default('') }}"
+apstra_username: "{{ ansible_apstra_username | default('') }}"
+apstra_password: "{{ ansible_apstra_password | default('') }}"
