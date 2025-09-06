@@ -1,34 +1,82 @@
 ---
 # Nutanix Create Security Zone Role
 # Creates Apstra security zone when Nutanix virtual switch is created
-#
-# Expected variables:
-# - vswitch_name: Name of the virtual switch from Nutanix event
-# - vswitch_uuid: UUID of the virtual switch
-# - blueprint_label_value: Target Apstra blueprint label
-# - apstra_server: Apstra server URL
-# - apstra_username: Apstra username
-# - apstra_password: Apstra password
 
-- name: Debug Nutanix virtual switch event
+- name: Get blueprint name from ConfigMap
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: ConfigMap
+    name: ansible-tower-config
+    namespace: default
+  register: config_map_info
+
+- name: Extract blueprint name from ConfigMap
+  set_fact:
+    blueprint_name: "{{ config_map_info.resources[0].data['ansible_config.ini'] | regex_search('blueprint_name = \"([^\"]+)\"', '\\1') | first }}"
+  when: config_map_info.resources | length > 0
+
+- name: Print blueprint_name from ConfigMap
+  debug:
+    msg: "Blueprint name from ConfigMap: {{ blueprint_name }}"
+
+- name: Print Nutanix virtual switch event details
+  debug:
+    msg: 
+      - "Event Type: {{ nutanix_event.event_type }}"
+      - "Entity Type: {{ nutanix_event.entity_type }}"
+      - "Timestamp: {{ nutanix_event.timestamp }}"
+      - "API Version: {{ nutanix_event.api_version }}"
+  when: nutanix_event is defined
+
+- name: Check if this is a deletion event
+  ansible.builtin.set_fact:
+    is_deletion: "{{ nutanix_event.event_type == 'DELETED' }}"
+  when: nutanix_event is defined
+
+- name: Exit if this is a deletion event
+  ansible.builtin.meta: end_play
+  when: is_deletion | default(false)
+
+- name: Extract virtual switch information from Nutanix event
+  set_fact:
+    vswitch_name: "{{ entity.name }}"
+    vswitch_uuid: "{{ entity.uuid }}"
+    vswitch_state: "{{ entity.state }}"
+  when: 
+    - nutanix_event is defined
+    - entity is defined
+
+- name: Debug extracted virtual switch information
   debug:
     msg: 
       - "Processing virtual switch creation event"
-      - "Virtual Switch Name: {{ vswitch_name | default('undefined') }}"
-      - "Virtual Switch UUID: {{ vswitch_uuid | default('undefined') }}"
-      - "Blueprint Label: {{ blueprint_label_value | default('undefined') }}"
+      - "Virtual Switch Name: {{ vswitch_name }}"
+      - "Virtual Switch UUID: {{ vswitch_uuid }}"
+      - "Virtual Switch State: {{ vswitch_state }}"
+      - "Blueprint Name: {{ blueprint_name }}"
   when: vswitch_name is defined
 
-- name: Fail if required variables are not defined
-  fail:
-    msg: "Required variable {{ item }} is not defined"
-  when: vars[item] is not defined
-  loop:
-    - vswitch_name
-    - blueprint_label_value
-    - apstra_server
-    - apstra_username
-    - apstra_password
+- name: Generate security zone name from virtual switch
+  ansible.builtin.set_fact:
+    security_zone_name: "ntx-{{ vswitch_name | lower | regex_replace('[^a-z0-9]', '-') }}"
+    vrf_name: "vrf-{{ vswitch_name | lower | regex_replace('[^a-z0-9]', '-') }}"
+  when: vswitch_name is defined
+
+- name: Create tags for Nutanix virtual switch
+  set_fact:
+    nutanix_tags:
+      - "source=nutanix_eda"
+      - "vswitch_name={{ vswitch_name }}"
+      - "vswitch_uuid={{ vswitch_uuid }}"
+      - "entity_type=virtual_switch"
+      - "event_type=created"
+  when: vswitch_name is defined
+
+- name: Get Apstra credentials from environment or default values
+  set_fact:
+    apstra_server: "{{ apstra_server_url | default('https://10.84.128.67:443') }}"
+    apstra_username: "{{ apstra_user | default('admin') }}"
+    apstra_password: "{{ apstra_pass | default('Apstrantx@2025') }}"
 
 - name: Authenticate with Apstra
   juniper.apstra.authenticate:
@@ -41,7 +89,7 @@
 - name: Get blueprint for security zone operations
   juniper.apstra.blueprint:
     body:
-      label: "{{ blueprint_label_value }}"
+      label: "{{ blueprint_name }}"
     auth_token: "{{ auth.token }}"
     lock_state: "ignore"
   register: register_bp
@@ -162,7 +210,7 @@
       - "Virtual Switch: {{ vswitch_name }}"
       - "Security Zone: {{ security_zone_name }}"
       - "VRF: {{ vrf_name }}"
-      - "Blueprint: {{ blueprint_label_value }}"
+      - "Blueprint: {{ blueprint_name }}"
       - "UUID: {{ vswitch_uuid | default('N/A') }}"
       - "Status: Success"
   when: sz_result is defined
