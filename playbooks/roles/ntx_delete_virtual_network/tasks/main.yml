@@ -4,13 +4,13 @@
   kubernetes.core.k8s_info:
     api_version: v1
     kind: ConfigMap
-    name: ansible-tower-config
+    name: nutanix-eda-config
     namespace: default
   register: config_map_info
 
 - name: Extract blueprint name from ConfigMap
   set_fact:
-    blueprint_name: "{{ config_map_info.resources[0].data['ansible_config.ini'] | regex_search('blueprint_name = \"([^\"]+)\"', '\\1') | first }}"
+    blueprint_name: "{{ config_map_info.resources[0].data.BLUEPRINT_NAME }}"
   when: config_map_info.resources | length > 0
 
 - name: Print blueprint_name from ConfigMap
