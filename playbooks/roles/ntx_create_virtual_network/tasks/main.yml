@@ -237,6 +237,53 @@
     msg: "Successfully created Apstra virtual network: {{ vnet_name }} in {{ security_zone_name }} security zone"
   when: vn_result is defined and not vn_result.failed
 
+- name: Get resource groups and IP pools for security zone assignment
+  juniper.apstra.apstra_facts:
+    id: "{{ register_bp.id }}"
+    auth_token: "{{ auth.token }}"
+    gather_network_facts:
+      - blueprints.resource_groups
+      - ip_pools
+  register: apstra_resource_facts
+  when: 
+    - vn_result is defined
+    - not vn_result.failed
+    - sz is defined
+
+- name: Extract list of available IP pool IDs
+  ansible.builtin.set_fact:
+    available_ip_pools: "{{ ansible_facts.apstra_facts.ip_pools | json_query('keys(@)') }}"
+  when: apstra_resource_facts is defined
+
+- name: Debug available IP pools for assignment
+  ansible.builtin.debug:
+    msg: "Found {{ available_ip_pools | length }} IP pools available for security zone {{ security_zone_name }}"
+  when: available_ip_pools is defined
+
+- name: Assign IP pools to security zone for Nutanix virtual network
+  juniper.apstra.resource_group:
+    id:
+      blueprint: "{{ register_bp.id.blueprint }}"
+      group_type: "ip"
+      group_name: "sz:{{ sz.security_zone.id }},leaf_loopback_ips"
+    body:
+      description: "Nutanix EDA - IP pools for security zone {{ security_zone_name }}"
+      pool_ids: "{{ available_ip_pools }}"
+    auth_token: "{{ auth.token }}"
+  register: resource_group_update
+  when: 
+    - available_ip_pools is defined
+    - available_ip_pools | length > 0
+    - sz is defined
+  ignore_errors: true  # Don't fail the entire process if resource assignment fails
+
+- name: Debug resource pool assignment result
+  debug:
+    msg: 
+      - "Resource pool assignment for security zone {{ security_zone_name }}: {{ 'Success' if (resource_group_update is defined and not resource_group_update.failed) else 'Skipped or Failed' }}"
+      - "Assigned {{ available_ip_pools | length if available_ip_pools is defined else 0 }} IP pools to leaf_loopback_ips"
+  when: vn_result is defined
+
 - name: Unlock and commit blueprint
   juniper.apstra.blueprint:
     id: "{{ register_bp.id }}"
