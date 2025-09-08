@@ -72,17 +72,10 @@
       - "event_type=created"
   when: vswitch_name is defined
 
-- name: Get Apstra credentials from environment or default values
-  set_fact:
-    apstra_server: "{{ apstra_server_url | default('https://10.84.128.67:443') }}"
-    apstra_username: "{{ apstra_user | default('admin') }}"
-    apstra_password: "{{ apstra_pass | default('Apstrantx@2025') }}"
-
-- name: Authenticate with Apstra
+- name: Connect to Apstra
   juniper.apstra.authenticate:
-    api_url: "{{ apstra_server }}"
-    username: "{{ apstra_username }}"
-    password: "{{ apstra_password }}"
+    verify_certificates: false
+    logout: false
   register: auth
   when: vswitch_name is defined
 
