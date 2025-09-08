@@ -2,10 +2,6 @@
 # Nutanix Create Security Zone Role
 # Creates Apstra security zone when Nutanix virtual switch is created
 
-- name: Print blueprint_name
-  debug:
-    msg: "{{ blueprint_name }}"
-
 - name: Get blueprint name from ConfigMap
   kubernetes.core.k8s_info:
     api_version: v1
