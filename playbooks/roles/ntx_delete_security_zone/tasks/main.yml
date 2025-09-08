@@ -1,6 +1,6 @@
 ---
-# Nutanix Create Security Zone Role
-# Creates Apstra security zone when Nutanix virtual switch is created
+# Nutanix Delete Security Zone Role
+# Deletes Apstra security zone when Nutanix virtual switch is deleted
 
 - name: Get blueprint name from ConfigMap
   kubernetes.core.k8s_info:
@@ -28,14 +28,14 @@
       - "API Version: {{ nutanix_event.api_version }}"
   when: nutanix_event is defined
 
-- name: Check if this is a deletion event
+- name: Check if this is not a deletion event
   ansible.builtin.set_fact:
-    is_deletion: "{{ nutanix_event.event_type == 'DELETED' }}"
+    is_not_deletion: "{{ nutanix_event.event_type != 'DELETED' }}"
   when: nutanix_event is defined
 
-- name: Exit if this is a deletion event
+- name: Exit if this is not a deletion event
   ansible.builtin.meta: end_play
-  when: is_deletion | default(false)
+  when: is_not_deletion | default(true)
 
 - name: Extract virtual switch information from Nutanix event
   set_fact:
@@ -49,58 +49,23 @@
 - name: Debug extracted virtual switch information
   debug:
     msg: 
-      - "Processing virtual switch creation event"
+      - "Processing virtual switch deletion event"
       - "Virtual Switch Name: {{ vswitch_name }}"
       - "Virtual Switch UUID: {{ vswitch_uuid }}"
       - "Virtual Switch State: {{ vswitch_state }}"
       - "Blueprint Name: {{ blueprint_name }}"
   when: vswitch_name is defined
 
-- name: Generate security zone name from virtual switch
-  ansible.builtin.set_fact:
-    security_zone_name: "{{ vswitch_name }}"
-    vrf_name: "{{ vswitch_name }}"
-  when: vswitch_name is defined
-
-- name: Create base VRF data structure for Nutanix virtual switch
+- name: Set security zone identifiers (same as vswitch name)
   set_fact:
-    vrf_data:
-      label: "{{ vswitch_name }}"
-      vrf_name: "{{ vswitch_name }}"
-      description: "Security zone for Nutanix virtual switch {{ vswitch_name }}"
+    label_value: "{{ vswitch_name }}"
+    vrf_name_value: "{{ vswitch_name }}"
+    security_zone_name: "{{ vswitch_name }}"
   when: vswitch_name is defined
-
-- name: Extract label directly using debug
-  debug:
-    msg: "{{ vrf_data }}"
-
-- name: Form the body combining sz_type
-  ansible.builtin.set_fact:
-    vrf_data_with_sztype: >-
-      {{
-        vrf_data
-        | combine({'sz_type': (vrf_data.sz_type if vrf_data.sz_type is defined else "evpn" )})
-        | combine({'label': (vrf_data.label if vrf_data.label is defined else vrf_data.vrf_name)})
-        | combine({'vrf_name': (vrf_data.vrf_name if vrf_data.vrf_name is defined else vrf_data.label)})
-      }}
-
-- name: Print vrf_data_with_sztype
-  debug:
-    msg: "{{ vrf_data_with_sztype }}"
 
 - name: Set the blueprint name
   set_fact:
     bluprint_label_value: "{{ blueprint_name }}"
-
-- name: Set sz_tags for Nutanix events
-  set_fact:
-    sz_tags: 
-      - "vswitch_name={{ vswitch_name }}"
-      - "vswitch_uuid={{ vswitch_uuid }}"
-      - "source=nutanix_eda"
-      - "entity_type=virtual_switch"
-      - "event_type=created"
-  when: vswitch_name is defined
 
 - name: Connect to Apstra
   juniper.apstra.authenticate:
@@ -117,38 +82,33 @@
         lock_state: "ignore"
       register: register_bp
 
-    - name: Create tags if sz_tags is defined and is a list
-      juniper.apstra.tag:
-        id: "{{ register_bp.id }}"
-        body:
-          label: "{{ tag }}"
-          description: "Nutanix EDA virtual switch tag"
-        auth_token: "{{ auth.token }}"
-      when: sz_tags is defined and sz_tags | length > 0
-      loop: "{{ sz_tags }}"
-      loop_control:
-        loop_var: tag
-      ignore_errors: true  # Tags may already exist
-
-    - name: Create security_zone
+    - name: Get security_zone by label
       juniper.apstra.security_zone:
         id: "{{ register_bp.id }}"
-        body: "{{ vrf_data_with_sztype }}"
+        body:
+          label: "{{ label_value }}"
         auth_token: "{{ auth.token }}"
-        tags: "{{ sz_tags if sz_tags is not none else omit }}"
       register: sz
+      ignore_errors: true
 
-    - name: If changes are made, print changed
+    - name: Delete the security_zone if it exists
+      juniper.apstra.security_zone:
+        id: "{{ sz.id }}"
+        state: absent
+        auth_token: "{{ auth.token }}"
+      register: sz_delete
+      when: sz is defined and not sz.failed
+
+    - name: Debug deletion result
       debug:
-        msg: "Security zone created successfully: {{ sz.changed }}"
-      when: sz.changed
+        msg: 
+          - "Security zone deletion completed"
+          - "Virtual Switch: {{ vswitch_name }}"
+          - "Security Zone: {{ security_zone_name }}"
+          - "Status: {{ 'Deleted' if (sz_delete.changed | default(false)) else 'Not found or already deleted' }}"
+      when: vswitch_name is defined
 
-    - name: If changes are not made, print not changed
-      debug:
-        msg: "Security zone already exists: {{ sz }}"
-      when: not sz.changed
-
-  rescue:
+  rescue:        
     - name: Unlock the blueprint as task is failed
       juniper.apstra.blueprint:
         id: "{{ register_bp.id }}"
@@ -161,8 +121,8 @@
     - name: Debug failure information
       debug:
         msg: 
-          - "Security zone creation failed for virtual switch: {{ vswitch_name }}"
-          - "Error details will be in the task output above"
+          - "Security zone deletion failed for virtual switch: {{ vswitch_name }}"
+          - "This may be normal if the security zone was already deleted"
 
   always:
     - name: Unlock the blueprint
@@ -186,11 +146,10 @@
     - name: Final status report
       debug:
         msg:
-          - "=== Nutanix Virtual Switch Security Zone Creation Complete ==="
+          - "=== Nutanix Virtual Switch Security Zone Deletion Complete ==="
           - "Virtual Switch: {{ vswitch_name }}"
           - "Security Zone: {{ security_zone_name }}"
-          - "VRF: {{ vrf_name }}"
           - "Blueprint: {{ blueprint_name }}"
           - "UUID: {{ vswitch_uuid | default('N/A') }}"
-          - "Status: {{ 'Success' if (not sz.failed | default(false)) else 'Failed' }}"
+          - "Status: {{ 'Success' if (not sz_delete.failed | default(false)) else 'Completed with warnings' }}"
       when: vswitch_name is defined

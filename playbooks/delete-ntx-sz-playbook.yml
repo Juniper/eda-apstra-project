@@ -1,0 +1,9 @@
+---
+- name: Test NTX Delete Virtual Switch Role
+  hosts: localhost
+  gather_facts: false
+  connection: local
+  tasks:
+    - name: Include ntx_delete_security_zone role
+      include_role:
+        name: ntx_delete_security_zone
