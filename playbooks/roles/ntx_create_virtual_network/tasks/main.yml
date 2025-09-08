@@ -91,9 +91,20 @@
       - "VLAN ID: {{ vlan_id | default('undefined') }}"
       - "Subnet CIDR: {{ subnet_cidr | default('undefined') }}"
       - "Gateway IP: {{ gateway_ip | default('undefined') }}"
+      - "Security Zone (vSwitch): {{ vswitch_name | default('undefined') }}"
 
 # Nutanix-to-Apstra virtual network integration
-# All Nutanix VNets will be created in 'ntx-sz' security zone
+# Use vswitch_name from event as security zone name
+
+- name: Set security zone name from virtual switch
+  set_fact:
+    security_zone_name: "{{ vswitch_name }}"
+  when: vswitch_name is defined
+
+- name: Debug security zone assignment
+  debug:
+    msg: "Using security zone: {{ security_zone_name }} (based on vswitch: {{ vswitch_name }})"
+  when: security_zone_name is defined
 
 - name: Connect to Apstra for virtual network creation
   juniper.apstra.authenticate:
@@ -111,15 +122,17 @@
   register: register_bp
   when: auth is defined and auth.token is defined
 
-- name: Get or create ntx-sz security zone
+- name: Get or create security zone based on virtual switch
   juniper.apstra.security_zone:
     id: "{{ register_bp.id }}"
     body:
-      label: "ntx-sz"
-      vrf_name: "ntx-sz"
+      label: "{{ security_zone_name }}"
+      vrf_name: "{{ security_zone_name }}"
     auth_token: "{{ auth.token }}"
   register: sz
-  when: register_bp is defined
+  when: 
+    - register_bp is defined
+    - security_zone_name is defined
 
 - name: Get blueprint topology for leaf nodes
   juniper.apstra.apstra_facts:
@@ -221,7 +234,7 @@
 
 - name: Debug virtual network creation result
   debug:
-    msg: "Successfully created Apstra virtual network: {{ vnet_name }} in ntx-sz security zone"
+    msg: "Successfully created Apstra virtual network: {{ vnet_name }} in {{ security_zone_name }} security zone"
   when: vn_result is defined and not vn_result.failed
 
 - name: Unlock and commit blueprint

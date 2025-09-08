@@ -58,6 +58,19 @@
       - "Subnet CIDR: {{ subnet_cidr | default('undefined') }}"
       - "Gateway IP: {{ gateway_ip | default('undefined') }}"
       - "vSwitch Name: {{ vswitch_name | default('undefined') }}"
+      - "Security Zone: {{ vswitch_name | default('undefined') }}"
+
+- name: Set security zone name from virtual switch
+  set_fact:
+    security_zone_name: "{{ vswitch_name }}"
+  when: vswitch_name is defined
+
+- name: Debug security zone for deletion
+  debug:
+    msg: "Virtual network '{{ vnet_name }}' was in security zone: {{ security_zone_name }}"
+  when: 
+    - security_zone_name is defined
+    - vnet_name is defined
 
 - name: Set the blueprint name
   set_fact:
@@ -65,7 +78,7 @@
 
 - name: Debug virtual network deletion
   debug:
-    msg: "Deleting Nutanix subnet: '{{ vnet_name }}' with VLAN {{ vlan_id }}"
+    msg: "Deleting Nutanix subnet: '{{ vnet_name }}' with VLAN {{ vlan_id }} from security zone: {{ security_zone_name | default('unknown') }}"
   when: vnet_name is defined
 
 - name: Connect to Apstra for virtual network deletion
@@ -108,7 +121,7 @@
 
     - name: Display deletion result
       debug:
-        msg: "Virtual network '{{ vnet_name }}' deleted successfully"
+        msg: "Virtual network '{{ vnet_name }}' deleted successfully from security zone: {{ security_zone_name | default('unknown') }}"
       when: vn_delete is succeeded
 
     - name: Delete associated ConfigMap if exists
