@@ -1,0 +1,293 @@
+---
+# Nutanix Create Connectivity Template Role
+# Creates Apstra connectivity templates when Nutanix VM connectivity changes
+
+- name: Get blueprint name from ConfigMap
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: ConfigMap
+    name: nutanix-eda-config
+    namespace: default
+  register: config_map_info
+
+- name: Extract blueprint name from ConfigMap
+  set_fact:
+    blueprint_name: "{{ config_map_info.resources[0].data.BLUEPRINT_NAME }}"
+  when: config_map_info.resources | length > 0
+
+- name: Print blueprint_name from ConfigMap
+  debug:
+    msg: "Blueprint name from ConfigMap: {{ blueprint_name }}"
+
+- name: Print Nutanix VM event details
+  debug:
+    msg: 
+      - "Event Type: {{ nutanix_event.event_type }}"
+      - "Entity Type: {{ nutanix_event.entity_type }}"
+      - "Timestamp: {{ nutanix_event.timestamp }}"
+      - "API Version: {{ nutanix_event.api_version }}"
+  when: nutanix_event is defined
+
+- name: Check if this is a deletion event
+  ansible.builtin.set_fact:
+    is_deletion: "{{ nutanix_event.event_type == 'DELETED' }}"
+  when: nutanix_event is defined
+
+- name: Exit if this is a deletion event
+  ansible.builtin.meta: end_play
+  when: is_deletion | default(false)
+
+- name: Check if VM is powered on
+  ansible.builtin.set_fact:
+    is_powered_on: "{{ vm.power_state == 'ON' }}"
+  when: vm is defined
+
+- name: Exit if VM is not powered on
+  ansible.builtin.meta: end_play
+  when: not (is_powered_on | default(false))
+
+- name: Extract VM information from Nutanix event
+  set_fact:
+    vm_name: "{{ entity.name }}"
+    vm_uuid: "{{ entity.uuid }}"
+    vm_state: "{{ entity.state }}"
+    vm_power_state: "{{ vm.power_state }}"
+    vm_host_name: "{{ vm.host_info.host_name | default('Unknown') }}"
+    vm_host_uuid: "{{ vm.host_info.host_uuid }}"
+  when: 
+    - nutanix_event is defined
+    - entity is defined
+    - vm is defined
+
+- name: Debug extracted VM information
+  debug:
+    msg: 
+      - "Processing VM connectivity event"
+      - "VM Name: {{ vm_name }}"
+      - "VM UUID: {{ vm_uuid }}"
+      - "Power State: {{ vm_power_state }}"
+      - "Host: {{ vm_host_name }}"
+      - "Blueprint Name: {{ blueprint_name }}"
+  when: vm_name is defined
+
+- name: Process network interfaces and build application points
+  set_fact:
+    application_points: []
+    network_info: []
+  when: vm.network_interfaces is defined
+
+- name: Build application points from VM network interfaces
+  set_fact:
+    application_points: "{{ application_points + [interface_application_point] }}"
+    network_info: "{{ network_info + [interface_info] }}"
+  loop: "{{ vm.network_interfaces }}"
+  loop_control:
+    loop_var: interface
+  vars:
+    interface_application_point:
+      remote_host: "{{ interface.physical_connectivity.physical_switch | default('unknown-switch') }}"
+      if_name: "{{ interface.physical_connectivity.switch_port | default('unknown-port') }}"
+      used: true
+    interface_info:
+      nic_index: "{{ interface.nic_index }}"
+      ip_address: "{{ interface.ip_address }}"
+      mac_address: "{{ interface.mac_address }}"
+      vswitch_name: "{{ interface.physical_connectivity.vswitch_name }}"
+      host_port: "{{ interface.physical_connectivity.host_port }}"
+      physical_switch: "{{ interface.physical_connectivity.physical_switch }}"
+      switch_port: "{{ interface.physical_connectivity.switch_port }}"
+  when: 
+    - vm.network_interfaces is defined
+    - interface.physical_connectivity is defined
+    - interface.physical_connectivity.switch_port is defined
+    - interface.physical_connectivity.switch_port != ""
+
+- name: Debug application points
+  debug:
+    msg: 
+      - "Application Points: {{ application_points }}"
+      - "Network Info: {{ network_info }}"
+
+- name: Exit if no valid network interfaces found
+  ansible.builtin.meta: end_play
+  when: application_points | length == 0
+
+# Get the virtual network name from the first interface
+- name: Extract virtual network information
+  set_fact:
+    # Use the vswitch name as the virtual network identifier
+    vnet_label_value: "{{ vm.network_interfaces[0].physical_connectivity.vswitch_name }}"
+    primary_vlan_id: "{{ vm.network_interfaces[0].subnet_uuid | hash('md5') | truncate(4, True, '') }}"
+  when: 
+    - vm.network_interfaces | length > 0
+    - vm.network_interfaces[0].physical_connectivity is defined
+
+- name: Set the blueprint name
+  set_fact:
+    bluprint_label_value: "{{ blueprint_name }}"
+
+- name: Set connectivity tags for Nutanix VM events
+  set_fact:
+    connectivity_tags: 
+      - "vm_name={{ vm_name }}"
+      - "vm_uuid={{ vm_uuid }}"
+      - "host_name={{ vm_host_name }}"
+      - "source=nutanix_eda"
+      - "entity_type=vm"
+      - "event_type=connectivity"
+      - "vswitch={{ vnet_label_value }}"
+  when: vm_name is defined
+
+- name: Connect to Apstra
+  juniper.apstra.authenticate:
+    verify_certificates: false
+    logout: false
+  register: auth
+
+- block:
+    - name: Get blueprint
+      juniper.apstra.blueprint:
+        body:
+          label: "{{ bluprint_label_value }}"
+        auth_token: "{{ auth.token }}"
+        lock_state: "ignore"
+      register: register_bp
+
+    - name: Create tags if connectivity_tags is defined and is a list
+      juniper.apstra.tag:
+        id: "{{ register_bp.id }}"
+        body:
+          label: "{{ tag }}"
+          description: "Nutanix EDA VM connectivity tag"
+        auth_token: "{{ auth.token }}"
+      when: connectivity_tags is defined and connectivity_tags | length > 0
+      loop: "{{ connectivity_tags }}"
+      loop_control:
+        loop_var: tag
+      ignore_errors: true  # Tags may already exist
+
+    - name: Update endpoint policy application points
+      juniper.apstra.endpoint_policy:
+        id: "{{ register_bp.id }}"
+        virtual_network_label: "{{ vnet_label_value }}"
+        tags: "{{ connectivity_tags if connectivity_tags is not none else omit }}"
+        body:
+          application_points: "{{ application_points }}"
+        state: present
+      register: ep_update
+
+    - name: If endpoint policy changes are made, print success
+      debug:
+        msg: "Endpoint policy updated successfully: {{ ep_update.changed }}"
+      when: ep_update.changed
+
+    - name: If endpoint policy changes are not made, print no change
+      debug:
+        msg: "Endpoint policy already up to date: {{ ep_update }}"
+      when: not ep_update.changed
+
+    # Update ConfigMap with VM connectivity information
+    - name: Create ConfigMap name from virtual network
+      set_fact:
+        connectivity_configmap_name: "{{ vnet_label_value }}-connectivity"
+
+    - name: Fetch or create connectivity ConfigMap
+      kubernetes.core.k8s_info:
+        kind: ConfigMap
+        name: "{{ connectivity_configmap_name }}"
+        namespace: juniper-apstra-eda
+      register: connectivity_cm
+      ignore_errors: true
+
+    - name: Prepare VM connectivity data
+      set_fact:
+        vm_connectivity_key: "{{ vm_name }}-{{ vm_host_name | regex_replace('[^a-zA-Z0-9]', '_') }}"
+        vm_connectivity_data:
+          vm_name: "{{ vm_name }}"
+          vm_uuid: "{{ vm_uuid }}"
+          host_name: "{{ vm_host_name }}"
+          host_uuid: "{{ vm_host_uuid }}"
+          power_state: "{{ vm_power_state }}"
+          network_interfaces: "{{ network_info }}"
+          application_points: "{{ application_points }}"
+          last_updated: "{{ nutanix_event.timestamp }}"
+
+    - name: Initialize ConfigMap data if it doesn't exist
+      set_fact:
+        existing_cm_data: {}
+      when: connectivity_cm.resources | length == 0
+
+    - name: Get existing ConfigMap data if it exists
+      set_fact:
+        existing_cm_data: "{{ connectivity_cm.resources[0].data | default({}) }}"
+      when: connectivity_cm.resources | length > 0
+
+    - name: Update ConfigMap data with VM connectivity
+      set_fact:
+        updated_cm_data: "{{ existing_cm_data | combine({vm_connectivity_key: (vm_connectivity_data | to_nice_json)}) }}"
+
+    - name: Create or update connectivity ConfigMap
+      kubernetes.core.k8s:
+        namespace: juniper-apstra-eda
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: "{{ connectivity_configmap_name }}"
+            labels:
+              managed-by: "nutanix-eda"
+              vswitch: "{{ vnet_label_value }}"
+          data: "{{ updated_cm_data }}"
+        state: present
+      register: cm_update
+
+    - name: Debug ConfigMap update result
+      debug:
+        msg: "Connectivity ConfigMap updated: {{ cm_update.changed }}"
+
+  rescue:
+    - name: Unlock the blueprint as task has failed
+      juniper.apstra.blueprint:
+        id: "{{ register_bp.id }}"
+        lock_state: "unlocked"
+        state: committed
+        auth_token: "{{ auth.token }}"
+      register: blueprint_unlock
+      ignore_errors: true
+
+    - name: Debug failure information
+      debug:
+        msg: 
+          - "VM connectivity template creation failed for VM: {{ vm_name }}"
+          - "Error details will be in the task output above"
+
+  always:
+    - name: Unlock the blueprint
+      juniper.apstra.blueprint:
+        id: "{{ register_bp.id }}"
+        lock_state: "unlocked"
+        state: committed
+        auth_token: "{{ auth.token }}"
+      register: blueprint_unlock
+      when: register_bp is defined
+
+    - name: Commit the blueprint
+      juniper.apstra.blueprint:
+        id: "{{ register_bp.id }}"
+        lock_state: "ignore"
+        state: committed
+        auth_token: "{{ auth.token }}"
+      register: blueprint_commit
+      when: register_bp is defined
+
+    - name: Final status report
+      debug:
+        msg:
+          - "=== Nutanix VM Connectivity Template Creation Complete ==="
+          - "VM Name: {{ vm_name }}"
+          - "Virtual Network: {{ vnet_label_value }}"
+          - "Application Points: {{ application_points | length }}"
+          - "Host: {{ vm_host_name }}"
+          - "Blueprint: {{ blueprint_name }}"
+          - "Status: {{ 'Success' if (not ep_update.failed | default(false)) else 'Failed' }}"
+      when: vm_name is defined
