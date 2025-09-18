@@ -280,6 +280,31 @@
       set_fact:
         ep_final_result: "{{ ep_create if (ep_update.failed | default(false)) else ep_update }}"
 
+    - name: Assign VxLAN to connectivity template (connectivity template name = virtual network name)
+      juniper.apstra.connectivity_template:
+        id: "{{ register_bp.id }}"
+        connectivity_template_label: "{{ vnet_label_value }}"
+        body:
+          virtual_networks:
+            - label: "{{ vnet_label_value }}"
+              tagged: true
+        auth_token: "{{ auth.token }}"
+        state: present
+      register: ct_assignment
+      ignore_errors: true
+
+    - name: Debug VxLAN assignment result
+      debug:
+        msg:
+          - "Assigning VxLAN '{{ vnet_label_value }}' to connectivity template '{{ vnet_label_value }}'"
+          - "Assignment result: {{ 'completed' if (ct_assignment.changed | default(false)) else 'not needed or failed' }}"
+          - "Assignment details: {{ ct_assignment | default('not attempted') }}"
+      debug:
+        msg:
+          - "VxLAN assignment result: {{ 'completed' if (ct_assignment.changed | default(false)) else 'not needed or failed' }}"
+          - "Assignment details: {{ ct_assignment | default('not attempted') }}"
+      when: ct_assignment is defined
+
     - name: If endpoint policy changes are made, print success
       debug:
         msg: "Endpoint policy updated successfully: {{ ep_final_result.changed }}"
