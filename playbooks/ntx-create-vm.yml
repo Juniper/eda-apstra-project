@@ -1,0 +1,9 @@
+---
+- name: Test NTX Create Connectivity template work Role
+  hosts: localhost
+  gather_facts: false
+  connection: local
+  tasks:
+    - name: Include ntx_create_connectivity_template role
+      include_role:
+        name: ntx_create_connectivity_template
