@@ -54,6 +54,10 @@
     vm_power_state: "{{ vm.power_state }}"
     vm_host_name: "{{ vm.host_info.host_name | default('Unknown') }}"
     vm_host_uuid: "{{ vm.host_info.host_uuid }}"
+    # Primary connectivity variables for easy access
+    vswitch_uuid: "{{ vm.primary_connectivity.vswitch_uuid | default(null) }}"
+    physical_switch: "{{ vm.primary_connectivity.physical_switch | default(null) }}"
+    host_name: "{{ vm.primary_connectivity.host_name | default(vm.host_info.host_name) }}"
   when: 
     - nutanix_event is defined
     - entity is defined
@@ -68,13 +72,40 @@
       - "Power State: {{ vm_power_state }}"
       - "Host: {{ vm_host_name }}"
       - "Blueprint Name: {{ blueprint_name }}"
+      - "Primary connectivity:"
+      - "  vSwitch UUID: {{ vswitch_uuid }}"
+      - "  Physical Switch: {{ physical_switch }}"
+      - "  Host Name: {{ host_name }}"
   when: vm_name is defined
+
+- name: Debug network interfaces structure
+  debug:
+    msg: 
+      - "Network interfaces count: {{ vm.network_interfaces | length }}"
+      - "Primary connectivity: {{ vm.primary_connectivity if vm.primary_connectivity is defined else 'Not defined' }}"
+      - "Interface details: {{ vm.network_interfaces }}"
+  when: vm.network_interfaces is defined
 
 - name: Process network interfaces and build application points
   set_fact:
     application_points: []
     network_info: []
   when: vm.network_interfaces is defined
+
+- name: Debug interface processing
+  debug:
+    msg:
+      - "Processing interface {{ interface.nic_index }}"
+      - "Interface data: {{ interface }}"
+      - "Physical connectivity: {{ interface.physical_connectivity if interface.physical_connectivity is defined else 'Not defined' }}"
+      - "Fallback remote host: {{ fallback_remote_host }}"
+      - "Actual remote host: {{ actual_remote_host }}"
+  loop: "{{ vm.network_interfaces }}"
+  loop_control:
+    loop_var: interface
+  vars:
+    fallback_remote_host: "{{ 'ntx-' + vm_host_name | regex_replace('[^a-zA-Z0-9]', '-') + '-switch' }}"
+    actual_remote_host: "{{ interface.physical_connectivity.physical_switch | default(fallback_remote_host) }}"
 
 - name: Build application points from VM network interfaces
   set_fact:
@@ -84,23 +115,29 @@
   loop_control:
     loop_var: interface
   vars:
+    # Create a meaningful remote_host name when physical_switch is missing
+    fallback_remote_host: "{{ 'ntx-' + vm_host_name | regex_replace('[^a-zA-Z0-9]', '-') + '-switch' }}"
+    actual_remote_host: "{{ interface.physical_connectivity.physical_switch | default(fallback_remote_host) }}"
+    actual_if_name: "{{ interface.physical_connectivity.switch_port | default('eth-' + interface.nic_index | string) }}"
+    
     interface_application_point:
-      remote_host: "{{ interface.physical_connectivity.physical_switch | default('ntx-' + vm_host_name | regex_replace('[^a-zA-Z0-9]', '-')) }}"
-      if_name: "{{ interface.physical_connectivity.switch_port | default('unknown-port') }}"
+      remote_host: "{{ actual_remote_host if actual_remote_host != '' else fallback_remote_host }}"
+      if_name: "{{ actual_if_name if actual_if_name != '' else ('eth-' + interface.nic_index | string) }}"
       used: true
+      
     interface_info:
       nic_index: "{{ interface.nic_index }}"
       ip_address: "{{ interface.ip_address }}"
       mac_address: "{{ interface.mac_address }}"
+      subnet_name: "{{ interface.subnet_name }}"
       vswitch_name: "{{ interface.physical_connectivity.vswitch_name }}"
       host_port: "{{ interface.physical_connectivity.host_port }}"
-      physical_switch: "{{ interface.physical_connectivity.physical_switch | default('ntx-' + vm_host_name | regex_replace('[^a-zA-Z0-9]', '-')) }}"
-      switch_port: "{{ interface.physical_connectivity.switch_port }}"
+      physical_switch: "{{ actual_remote_host }}"
+      switch_port: "{{ actual_if_name }}"
+      
   when: 
     - vm.network_interfaces is defined
     - interface.physical_connectivity is defined
-    - interface.physical_connectivity.switch_port is defined
-    - interface.physical_connectivity.switch_port != ""
 
 - name: Debug application points
   debug:
@@ -112,7 +149,6 @@
   ansible.builtin.meta: end_play
   when: 
     - application_points | length == 0
-    - network_info | length == 0
 
 # Get the virtual network name from the first interface - use subnet name instead of vswitch name
 - name: Extract virtual network information
@@ -212,6 +248,12 @@
         tags: "{{ connectivity_tags if connectivity_tags is not none else omit }}"
         body:
           application_points: "{{ application_points }}"
+          description: "Connectivity for VM {{ vm_name }} on subnet {{ vnet_label_value }}"
+          attributes:
+            vm_name: "{{ vm_name }}"
+            vm_uuid: "{{ vm_uuid }}"
+            subnet_name: "{{ vnet_label_value }}"
+            host_name: "{{ vm_host_name }}"
         state: present
       register: ep_update
       ignore_errors: true
@@ -223,7 +265,13 @@
         tags: "{{ connectivity_tags if connectivity_tags is not none else omit }}"
         body:
           application_points: "{{ application_points }}"
-          description: "Endpoint policy for Nutanix VM {{ vm_name }}"
+          description: "Endpoint policy for Nutanix VM {{ vm_name }} on subnet {{ vnet_label_value }}"
+          attributes:
+            vm_name: "{{ vm_name }}"
+            vm_uuid: "{{ vm_uuid }}"
+            subnet_name: "{{ vnet_label_value }}"
+            host_name: "{{ vm_host_name }}"
+            source: "nutanix_eda"
         state: present
       register: ep_create
       when: ep_update.failed | default(false)
