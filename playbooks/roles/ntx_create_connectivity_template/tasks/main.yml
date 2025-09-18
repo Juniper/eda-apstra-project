@@ -85,7 +85,7 @@
     loop_var: interface
   vars:
     interface_application_point:
-      remote_host: "{{ interface.physical_connectivity.physical_switch | default('unknown-switch') }}"
+      remote_host: "{{ interface.physical_connectivity.physical_switch | default('ntx-' + vm_host_name | regex_replace('[^a-zA-Z0-9]', '-')) }}"
       if_name: "{{ interface.physical_connectivity.switch_port | default('unknown-port') }}"
       used: true
     interface_info:
@@ -94,7 +94,7 @@
       mac_address: "{{ interface.mac_address }}"
       vswitch_name: "{{ interface.physical_connectivity.vswitch_name }}"
       host_port: "{{ interface.physical_connectivity.host_port }}"
-      physical_switch: "{{ interface.physical_connectivity.physical_switch }}"
+      physical_switch: "{{ interface.physical_connectivity.physical_switch | default('ntx-' + vm_host_name | regex_replace('[^a-zA-Z0-9]', '-')) }}"
       switch_port: "{{ interface.physical_connectivity.switch_port }}"
   when: 
     - vm.network_interfaces is defined
@@ -110,17 +110,21 @@
 
 - name: Exit if no valid network interfaces found
   ansible.builtin.meta: end_play
-  when: application_points | length == 0
+  when: 
+    - application_points | length == 0
+    - network_info | length == 0
 
-# Get the virtual network name from the first interface
+# Get the virtual network name from the first interface - use subnet name instead of vswitch name
 - name: Extract virtual network information
   set_fact:
-    # Use the vswitch name as the virtual network identifier
-    vnet_label_value: "{{ vm.network_interfaces[0].physical_connectivity.vswitch_name }}"
+    # Use the subnet name as the virtual network identifier (more meaningful for Apstra)
+    vnet_label_value: "{{ vm.network_interfaces[0].subnet_name }}"
+    vswitch_name: "{{ vm.network_interfaces[0].physical_connectivity.vswitch_name }}"
     primary_vlan_id: "{{ vm.network_interfaces[0].subnet_uuid | hash('md5') | truncate(4, True, '') }}"
   when: 
     - vm.network_interfaces | length > 0
-    - vm.network_interfaces[0].physical_connectivity is defined
+    - vm.network_interfaces[0].subnet_name is defined
+    - vm.network_interfaces[0].subnet_name != ""
 
 - name: Set the blueprint name
   set_fact:
@@ -132,10 +136,11 @@
       - "vm_name={{ vm_name }}"
       - "vm_uuid={{ vm_uuid }}"
       - "host_name={{ vm_host_name }}"
-      - "source=nutanix_eda"
-      - "entity_type=vm"
-      - "event_type=connectivity"
-      - "vswitch={{ vnet_label_value }}"
+      - "subnet_name={{ vnet_label_value }}"
+      - "vswitch_name={{ vswitch_name }}"
+      - "source_nutanix_eda"
+      - "entity_type_vm"
+      - "event_type_connectivity"
   when: vm_name is defined
 
 - name: Connect to Apstra
@@ -166,6 +171,40 @@
         loop_var: tag
       ignore_errors: true  # Tags may already exist
 
+    - name: Check if virtual network exists
+      juniper.apstra.virtual_network:
+        id: "{{ register_bp.id }}"
+        label: "{{ vnet_label_value }}"
+        auth_token: "{{ auth.token }}"
+        state: query
+      register: vnet_check
+      ignore_errors: true
+
+    - name: Debug virtual network check result
+      debug:
+        msg: 
+          - "Checking virtual network: {{ vnet_label_value }}"
+          - "Check result: {{ 'exists' if not (vnet_check.failed | default(false)) else 'not found' }}"
+
+    - name: Create virtual network if it doesn't exist
+      juniper.apstra.virtual_network:
+        id: "{{ register_bp.id }}"
+        body:
+          label: "{{ vnet_label_value }}"
+          description: "Virtual network for Nutanix subnet {{ vnet_label_value }} on vSwitch {{ vswitch_name }}"
+          vn_type: "vxlan"
+        auth_token: "{{ auth.token }}"
+        state: present
+      register: vnet_create
+      when: vnet_check.failed | default(false)
+
+    - name: Debug virtual network creation result
+      debug:
+        msg: 
+          - "Virtual network {{ vnet_label_value }}: {{ 'created' if (vnet_create.changed | default(false)) else 'creation not needed' }}"
+          - "Creation result: {{ vnet_create | default('not attempted') }}"
+      when: vnet_check.failed | default(false)
+
     - name: Update endpoint policy application points
       juniper.apstra.endpoint_policy:
         id: "{{ register_bp.id }}"
@@ -175,19 +214,43 @@
           application_points: "{{ application_points }}"
         state: present
       register: ep_update
+      ignore_errors: true
+
+    - name: Handle endpoint policy creation if update failed
+      juniper.apstra.endpoint_policy:
+        id: "{{ register_bp.id }}"
+        virtual_network_label: "{{ vnet_label_value }}"
+        tags: "{{ connectivity_tags if connectivity_tags is not none else omit }}"
+        body:
+          application_points: "{{ application_points }}"
+          description: "Endpoint policy for Nutanix VM {{ vm_name }}"
+        state: present
+      register: ep_create
+      when: ep_update.failed | default(false)
+
+    - name: Set final endpoint policy result
+      set_fact:
+        ep_final_result: "{{ ep_create if (ep_update.failed | default(false)) else ep_update }}"
 
     - name: If endpoint policy changes are made, print success
       debug:
-        msg: "Endpoint policy updated successfully: {{ ep_update.changed }}"
-      when: ep_update.changed
+        msg: "Endpoint policy updated successfully: {{ ep_final_result.changed }}"
+      when: ep_final_result.changed | default(false)
 
     - name: If endpoint policy changes are not made, print no change
       debug:
-        msg: "Endpoint policy already up to date: {{ ep_update }}"
-      when: not ep_update.changed
+        msg: "Endpoint policy already up to date: {{ ep_final_result }}"
+      when: not (ep_final_result.changed | default(false))
+
+    - name: Handle endpoint policy failure
+      debug:
+        msg: 
+          - "Failed to create/update endpoint policy for virtual network: {{ vnet_label_value }}"
+          - "Error: {{ ep_final_result.msg | default('Unknown error') }}"
+      when: ep_final_result.failed | default(false)
 
     # Update ConfigMap with VM connectivity information
-    - name: Create ConfigMap name from virtual network
+    - name: Create ConfigMap name from subnet name
       set_fact:
         connectivity_configmap_name: "{{ vnet_label_value }}-connectivity"
 
@@ -236,7 +299,8 @@
             name: "{{ connectivity_configmap_name }}"
             labels:
               managed-by: "nutanix-eda"
-              vswitch: "{{ vnet_label_value }}"
+              subnet: "{{ vnet_label_value }}"
+              vswitch: "{{ vswitch_name }}"
           data: "{{ updated_cm_data }}"
         state: present
       register: cm_update
@@ -285,9 +349,10 @@
         msg:
           - "=== Nutanix VM Connectivity Template Creation Complete ==="
           - "VM Name: {{ vm_name }}"
-          - "Virtual Network: {{ vnet_label_value }}"
+          - "Subnet: {{ vnet_label_value }}"
+          - "Virtual Switch: {{ vswitch_name }}"
           - "Application Points: {{ application_points | length }}"
           - "Host: {{ vm_host_name }}"
           - "Blueprint: {{ blueprint_name }}"
-          - "Status: {{ 'Success' if (not ep_update.failed | default(false)) else 'Failed' }}"
+          - "Status: {{ 'Success' if (not (ep_final_result.failed | default(false))) else 'Failed' }}"
       when: vm_name is defined
