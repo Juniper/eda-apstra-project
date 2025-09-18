@@ -248,12 +248,6 @@
         tags: "{{ connectivity_tags if connectivity_tags is not none else omit }}"
         body:
           application_points: "{{ application_points }}"
-          description: "Connectivity for VM {{ vm_name }} on subnet {{ vnet_label_value }}"
-          attributes:
-            vm_name: "{{ vm_name }}"
-            vm_uuid: "{{ vm_uuid }}"
-            subnet_name: "{{ vnet_label_value }}"
-            host_name: "{{ vm_host_name }}"
         state: present
       register: ep_update
       ignore_errors: true
@@ -265,13 +259,6 @@
         tags: "{{ connectivity_tags if connectivity_tags is not none else omit }}"
         body:
           application_points: "{{ application_points }}"
-          description: "Endpoint policy for Nutanix VM {{ vm_name }} on subnet {{ vnet_label_value }}"
-          attributes:
-            vm_name: "{{ vm_name }}"
-            vm_uuid: "{{ vm_uuid }}"
-            subnet_name: "{{ vnet_label_value }}"
-            host_name: "{{ vm_host_name }}"
-            source: "nutanix_eda"
         state: present
       register: ep_create
       when: ep_update.failed | default(false)
@@ -279,28 +266,6 @@
     - name: Set final endpoint policy result
       set_fact:
         ep_final_result: "{{ ep_create if (ep_update.failed | default(false)) else ep_update }}"
-
-    - name: If endpoint policy changes are made, print success
-      debug:
-        msg: "Endpoint policy updated successfully: {{ ep_final_result.changed }}"
-      when: ep_final_result.changed | default(false)
-
-    - name: If endpoint policy changes are not made, print no change
-      debug:
-        msg: "Endpoint policy already up to date: {{ ep_final_result }}"
-      when: not (ep_final_result.changed | default(false))
-
-    - name: Handle endpoint policy failure
-      debug:
-        msg: 
-          - "Failed to create/update endpoint policy for virtual network: {{ vnet_label_value }}"
-          - "Error: {{ ep_final_result.msg | default('Unknown error') }}"
-      when: ep_final_result.failed | default(false)
-      debug:
-        msg:
-          - "VxLAN assignment result: {{ 'completed' if (ct_assignment.changed | default(false)) else 'not needed or failed' }}"
-          - "Assignment details: {{ ct_assignment | default('not attempted') }}"
-      when: ct_assignment is defined
 
     - name: If endpoint policy changes are made, print success
       debug:
