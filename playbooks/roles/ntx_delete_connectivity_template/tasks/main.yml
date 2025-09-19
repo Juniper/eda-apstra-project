@@ -37,14 +37,14 @@
   ansible.builtin.meta: end_play
   when: is_creation | default(false)
 
-- name: Check if VM is powered on
-  ansible.builtin.set_fact:
-    is_powered_on: "{{ vm.power_state == 'ON' }}"
-  when: vm is defined
+# - name: Check if VM is powered on
+#   ansible.builtin.set_fact:
+#     is_powered_on: "{{ vm.power_state == 'ON' }}"
+#   when: vm is defined
 
-- name: Exit if VM is powered on
-  ansible.builtin.meta: end_play
-  when: is_powered_on | default(false)
+# - name: Exit if VM is powered on
+#   ansible.builtin.meta: end_play
+#   when: is_powered_on | default(false)
 
 - name: Extract VM information from Nutanix event
   set_fact:
