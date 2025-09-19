@@ -1,0 +1,379 @@
+---
+# Nutanix Delete Connectivity Template Role
+# Removes Apstra connectivity templates when Nutanix VM connectivity is deleted
+
+- name: Get blueprint name from ConfigMap
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: ConfigMap
+    name: nutanix-eda-config
+    namespace: default
+  register: config_map_info
+
+- name: Extract blueprint name from ConfigMap
+  set_fact:
+    blueprint_name: "{{ config_map_info.resources[0].data.BLUEPRINT_NAME }}"
+  when: config_map_info.resources | length > 0
+
+- name: Print blueprint_name from ConfigMap
+  debug:
+    msg: "Blueprint name from ConfigMap: {{ blueprint_name }}"
+
+- name: Print Nutanix VM event details
+  debug:
+    msg: 
+      - "Event Type: {{ nutanix_event.event_type }}"
+      - "Entity Type: {{ nutanix_event.entity_type }}"
+      - "Timestamp: {{ nutanix_event.timestamp }}"
+      - "API Version: {{ nutanix_event.api_version }}"
+  when: nutanix_event is defined
+
+- name: Check if this is a creation event
+  ansible.builtin.set_fact:
+    is_creation: "{{ nutanix_event.event_type == 'CREATE' }}"
+  when: nutanix_event is defined
+
+- name: Exit if this is a creation event
+  ansible.builtin.meta: end_play
+  when: is_creation | default(false)
+
+- name: Check if VM is powered on
+  ansible.builtin.set_fact:
+    is_powered_on: "{{ vm.power_state == 'ON' }}"
+  when: vm is defined
+
+- name: Exit if VM is powered on
+  ansible.builtin.meta: end_play
+  when: is_powered_on | default(false)
+
+- name: Extract VM information from Nutanix event
+  set_fact:
+    vm_name: "{{ entity.name }}"
+    vm_uuid: "{{ entity.uuid }}"
+    vm_state: "{{ entity.state }}"
+    vm_power_state: "{{ vm.power_state }}"
+    vm_host_name: "{{ vm.host_info.host_name | default('Unknown') }}"
+    vm_host_uuid: "{{ vm.host_info.host_uuid }}"
+    # Primary connectivity variables for easy access
+    vswitch_uuid: "{{ vm.primary_connectivity.vswitch_uuid | default(null) }}"
+    physical_switch: "{{ vm.primary_connectivity.physical_switch | default(null) }}"
+    host_name: "{{ vm.primary_connectivity.host_name | default(vm.host_info.host_name) }}"
+  when: 
+    - nutanix_event is defined
+    - entity is defined
+    - vm is defined
+
+- name: Debug extracted VM information
+  debug:
+    msg: 
+      - "Processing VM connectivity deletion event"
+      - "VM Name: {{ vm_name }}"
+      - "VM UUID: {{ vm_uuid }}"
+      - "Power State: {{ vm_power_state }}"
+      - "Host: {{ vm_host_name }}"
+      - "Blueprint Name: {{ blueprint_name }}"
+      - "Primary connectivity:"
+      - "  vSwitch UUID: {{ vswitch_uuid }}"
+      - "  Physical Switch: {{ physical_switch }}"
+      - "  Host Name: {{ host_name }}"
+  when: vm_name is defined
+
+- name: Debug network interfaces structure
+  debug:
+    msg: 
+      - "Network interfaces count: {{ vm.network_interfaces | length }}"
+      - "Primary connectivity: {{ vm.primary_connectivity if vm.primary_connectivity is defined else 'Not defined' }}"
+      - "Interface details: {{ vm.network_interfaces }}"
+  when: vm.network_interfaces is defined
+
+- name: Process network interfaces and build application points
+  set_fact:
+    application_points: []
+    network_info: []
+  when: vm.network_interfaces is defined
+
+- name: Debug interface processing
+  debug:
+    msg:
+      - "Processing interface {{ interface.nic_index }}"
+      - "Interface data: {{ interface }}"
+      - "Physical connectivity: {{ interface.physical_connectivity if interface.physical_connectivity is defined else 'Not defined' }}"
+      - "Fallback remote host: {{ fallback_remote_host }}"
+      - "Actual remote host: {{ actual_remote_host }}"
+  loop: "{{ vm.network_interfaces }}"
+  loop_control:
+    loop_var: interface
+  vars:
+    fallback_remote_host: "{{ 'ntx-' + vm_host_name | regex_replace('[^a-zA-Z0-9]', '-') + '-switch' }}"
+    actual_remote_host: "{{ interface.physical_connectivity.physical_switch | default(fallback_remote_host) }}"
+
+- name: Build application points from VM network interfaces
+  set_fact:
+    application_points: "{{ application_points + [interface_application_point] }}"
+    network_info: "{{ network_info + [interface_info] }}"
+  loop: "{{ vm.network_interfaces }}"
+  loop_control:
+    loop_var: interface
+  vars:
+    # Create a meaningful remote_host name when physical_switch is missing
+    fallback_remote_host: "{{ 'ntx-' + vm_host_name | regex_replace('[^a-zA-Z0-9]', '-') + '-switch' }}"
+    actual_remote_host: "{{ interface.physical_connectivity.physical_switch | default(fallback_remote_host) }}"
+    actual_if_name: "{{ interface.physical_connectivity.switch_port | default('eth-' + interface.nic_index | string) }}"
+    
+    interface_application_point:
+      remote_host: "{{ actual_remote_host if actual_remote_host != '' else fallback_remote_host }}"
+      if_name: "{{ actual_if_name if actual_if_name != '' else ('eth-' + interface.nic_index | string) }}"
+      used: true
+      
+    interface_info:
+      nic_index: "{{ interface.nic_index }}"
+      ip_address: "{{ interface.ip_address }}"
+      mac_address: "{{ interface.mac_address }}"
+      subnet_name: "{{ interface.subnet_name }}"
+      vswitch_name: "{{ interface.physical_connectivity.vswitch_name }}"
+      host_port: "{{ interface.physical_connectivity.host_port }}"
+      physical_switch: "{{ actual_remote_host }}"
+      switch_port: "{{ actual_if_name }}"
+      
+  when: 
+    - vm.network_interfaces is defined
+    - interface.physical_connectivity is defined
+
+- name: Debug application points
+  debug:
+    msg: 
+      - "Application Points: {{ application_points }}"
+      - "Network Info: {{ network_info }}"
+
+- name: Exit if no valid network interfaces found
+  ansible.builtin.meta: end_play
+  when: 
+    - application_points | length == 0
+
+# Get the virtual network name from the first interface - use subnet name instead of vswitch name
+- name: Extract virtual network information
+  set_fact:
+    # Use the subnet name as the virtual network identifier (more meaningful for Apstra)
+    vnet_label_value: "{{ vm.network_interfaces[0].subnet_name }}"
+    vswitch_name: "{{ vm.network_interfaces[0].physical_connectivity.vswitch_name }}"
+    primary_vlan_id: "{{ vm.network_interfaces[0].subnet_uuid | hash('md5') | truncate(4, True, '') }}"
+  when: 
+    - vm.network_interfaces | length > 0
+    - vm.network_interfaces[0].subnet_name is defined
+    - vm.network_interfaces[0].subnet_name != ""
+
+- name: Set the blueprint name
+  set_fact:
+    bluprint_label_value: "{{ blueprint_name }}"
+
+- name: Set connectivity tags for Nutanix VM events
+  set_fact:
+    connectivity_tags: 
+      - "vm_name={{ vm_name }}"
+      - "vm_uuid={{ vm_uuid }}"
+      - "host_name={{ vm_host_name }}"
+      - "subnet_name={{ vnet_label_value }}"
+      - "vswitch_name={{ vswitch_name }}"
+      - "source_nutanix_eda"
+      - "entity_type_vm"
+      - "event_type_connectivity_delete"
+  when: vm_name is defined
+
+- name: Connect to Apstra
+  juniper.apstra.authenticate:
+    verify_certificates: false
+    logout: false
+  register: auth
+
+- block:
+    - name: Get blueprint
+      juniper.apstra.blueprint:
+        body:
+          label: "{{ bluprint_label_value }}"
+        auth_token: "{{ auth.token }}"
+        lock_state: "ignore"
+      register: register_bp
+
+    - name: Create tags if connectivity_tags is defined and is a list
+      juniper.apstra.tag:
+        id: "{{ register_bp.id }}"
+        body:
+          label: "{{ tag }}"
+          description: "Nutanix EDA VM connectivity deletion tag"
+        auth_token: "{{ auth.token }}"
+      when: connectivity_tags is defined and connectivity_tags | length > 0
+      loop: "{{ connectivity_tags }}"
+      loop_control:
+        loop_var: tag
+      ignore_errors: true  # Tags may already exist
+
+    - name: Check if virtual network exists
+      juniper.apstra.virtual_network:
+        id: "{{ register_bp.id }}"
+        label: "{{ vnet_label_value }}"
+        auth_token: "{{ auth.token }}"
+        state: query
+      register: vnet_check
+      ignore_errors: true
+
+    - name: Debug virtual network check result
+      debug:
+        msg: 
+          - "Checking virtual network: {{ vnet_label_value }}"
+          - "Check result: {{ 'exists' if not (vnet_check.failed | default(false)) else 'not found' }}"
+
+    - name: Remove endpoint policy application points
+      juniper.apstra.endpoint_policy:
+        id: "{{ register_bp.id }}"
+        virtual_network_label: "{{ vnet_label_value }}"
+        tags: "{{ connectivity_tags if connectivity_tags is not none else omit }}"
+        body:
+          application_points: "{{ application_points }}"
+        state: absent
+      register: ep_update
+      ignore_errors: true
+
+    - name: Handle endpoint policy removal if update failed
+      juniper.apstra.endpoint_policy:
+        id: "{{ register_bp.id }}"
+        virtual_network_label: "{{ vnet_label_value }}"
+        tags: "{{ connectivity_tags if connectivity_tags is not none else omit }}"
+        body:
+          application_points: "{{ application_points }}"
+        state: absent
+      register: ep_create
+      when: ep_update.failed | default(false)
+
+    - name: Set final endpoint policy result
+      set_fact:
+        ep_final_result: "{{ ep_create if (ep_update.failed | default(false)) else ep_update }}"
+
+    - name: If endpoint policy changes are made, print success
+      debug:
+        msg: "Endpoint policy application points removed successfully: {{ ep_final_result.changed }}"
+      when: ep_final_result.changed | default(false)
+
+    - name: If endpoint policy changes are not made, print no change
+      debug:
+        msg: "Endpoint policy application points already removed: {{ ep_final_result }}"
+      when: not (ep_final_result.changed | default(false))
+
+    - name: Handle endpoint policy failure
+      debug:
+        msg: 
+          - "Failed to remove endpoint policy application points for virtual network: {{ vnet_label_value }}"
+          - "Error: {{ ep_final_result.msg | default('Unknown error') }}"
+      when: ep_final_result.failed | default(false)
+
+    # Update ConfigMap by removing VM connectivity information
+    - name: Create ConfigMap name from subnet name
+      set_fact:
+        connectivity_configmap_name: "{{ vnet_label_value }}-connectivity"
+
+    - name: Fetch connectivity ConfigMap
+      kubernetes.core.k8s_info:
+        kind: ConfigMap
+        name: "{{ connectivity_configmap_name }}"
+        namespace: juniper-apstra-eda
+      register: connectivity_cm
+      ignore_errors: true
+
+    - name: Prepare VM connectivity key for removal
+      set_fact:
+        vm_connectivity_key: "{{ vm_name }}-{{ vm_host_name | regex_replace('[^a-zA-Z0-9]', '_') }}"
+
+    - name: Get existing ConfigMap data if it exists
+      set_fact:
+        existing_cm_data: "{{ connectivity_cm.resources[0].data | default({}) }}"
+      when: connectivity_cm.resources | length > 0
+
+    - name: Remove VM connectivity from ConfigMap data
+      set_fact:
+        updated_cm_data: "{{ existing_cm_data | dict2items | rejectattr('key', 'equalto', vm_connectivity_key) | items2dict }}"
+      when: 
+        - connectivity_cm.resources | length > 0
+        - vm_connectivity_key in existing_cm_data
+
+    - name: Update connectivity ConfigMap (remove VM entry)
+      kubernetes.core.k8s:
+        namespace: juniper-apstra-eda
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: "{{ connectivity_configmap_name }}"
+            labels:
+              managed-by: "nutanix-eda"
+              subnet: "{{ vnet_label_value }}"
+              vswitch: "{{ vswitch_name }}"
+          data: "{{ updated_cm_data }}"
+        state: present
+      register: cm_update
+      when: 
+        - connectivity_cm.resources | length > 0
+        - vm_connectivity_key in existing_cm_data
+
+    - name: Delete ConfigMap if no VMs remaining
+      kubernetes.core.k8s:
+        api_version: v1
+        kind: ConfigMap
+        name: "{{ connectivity_configmap_name }}"
+        namespace: juniper-apstra-eda
+        state: absent
+      register: cm_delete
+      when: 
+        - connectivity_cm.resources | length > 0
+        - updated_cm_data | length == 0
+
+    - name: Debug ConfigMap update result
+      debug:
+        msg: 
+          - "ConfigMap operation: {{ 'deleted (empty)' if (cm_delete is defined and cm_delete.changed) else ('updated' if (cm_update is defined and cm_update.changed) else 'no change needed') }}"
+
+  rescue:
+    - name: Unlock the blueprint as task has failed
+      juniper.apstra.blueprint:
+        id: "{{ register_bp.id }}"
+        lock_state: "unlocked"
+        state: committed
+        auth_token: "{{ auth.token }}"
+      register: blueprint_unlock
+      ignore_errors: true
+
+    - name: Debug failure information
+      debug:
+        msg: 
+          - "VM connectivity template deletion failed for VM: {{ vm_name }}"
+          - "Error details will be in the task output above"
+
+  always:
+    - name: Unlock the blueprint
+      juniper.apstra.blueprint:
+        id: "{{ register_bp.id }}"
+        lock_state: "unlocked"
+        state: committed
+        auth_token: "{{ auth.token }}"
+      register: blueprint_unlock
+      when: register_bp is defined
+
+    - name: Commit the blueprint
+      juniper.apstra.blueprint:
+        id: "{{ register_bp.id }}"
+        lock_state: "ignore"
+        state: committed
+        auth_token: "{{ auth.token }}"
+      register: blueprint_commit
+      when: register_bp is defined
+
+    - name: Final status report
+      debug:
+        msg:
+          - "=== Nutanix VM Connectivity Template Deletion Complete ==="
+          - "VM Name: {{ vm_name }}"
+          - "Subnet: {{ vnet_label_value }}"
+          - "Virtual Switch: {{ vswitch_name }}"
+          - "Application Points Removed: {{ application_points | length }}"
+          - "Host: {{ vm_host_name }}"
+          - "Blueprint: {{ blueprint_name }}"
+          - "Status: {{ 'Success' if (not (ep_final_result.failed | default(false))) else 'Failed' }}"
+      when: vm_name is defined

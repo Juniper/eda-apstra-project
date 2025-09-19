@@ -1,0 +1,23 @@
+---
+# Default variables for ntx_delete_connectivity_template role
+# These can be overridden by the user
+
+# Blueprint settings
+blueprint_label_value: "apstra-datacenter"
+
+# Connectivity template settings
+auto_commit_changes: true
+create_connectivity_configmap: true
+
+# Processing options - for delete, we don't require VM to be powered on
+require_powered_on_vm: false
+require_physical_connectivity: true
+
+# Apstra connection settings (these should be overridden)
+apstra_server: "{{ ansible_apstra_server | default('') }}"
+apstra_username: "{{ ansible_apstra_username | default('') }}"
+apstra_password: "{{ ansible_apstra_password | default('') }}"
+
+# Virtual network naming
+use_vswitch_as_vnet: true
+vnet_prefix: ""

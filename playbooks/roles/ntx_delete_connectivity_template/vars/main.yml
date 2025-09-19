@@ -1,0 +1,19 @@
+# vars/main.yml
+---
+# Default variables for ntx_delete_connectivity_template role
+# These are internal variables used by the role
+
+# # Connectivity processing settings
+# process_powered_off_vms: true  # For delete, we process powered off VMs
+# create_configmap_entries: true
+
+# # Application point settings
+# default_remote_host: "unknown-switch"
+# default_interface_name: "unknown-port"
+
+# # ConfigMap settings
+# configmap_namespace: "juniper-apstra-eda"
+# configmap_label_prefix: "nutanix-eda"
+
+# # Tag settings for connectivity
+# connectivity_tag_prefix: "nutanix_vm_connectivity"
