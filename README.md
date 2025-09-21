@@ -401,11 +401,28 @@ Follow these steps to demonstrate the integration:
 
 ### Step 1: Create a Project (Security Zone)
 
-```bash
+```yaml
 # Create a new project that will trigger VRF creation
-oc new-project apstra-demo \
-  --description="Demonstration of Apstra EDA integration" \
-  --display-name="Apstra Demo Project"
+apiVersion: project.openshift.io/v1
+kind: Project
+metadata:
+  name: apstra-rhocp-demo
+  labels:
+    type: eda
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: privileged
+    pod-security.kubernetes.io/warn: privileged
+    security.openshift.io/scc.podSecurityLabelSync: "false"
+  annotations:
+    apstra.juniper.net/vrf: '[
+      {
+        "vrfName": "vrf-demo"
+      }
+    ]'
+```
+Apply the configurations:
+```bash
+oc apply -f project.yaml
 ```
 
 **Expected Result:** 
