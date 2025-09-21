@@ -78,7 +78,7 @@ The following operators must be installed and configured:
 ### Infrastructure Requirements
 
 #### OpenShift Cluster
-- **Master Nodes:** Minimum 3 hosts (can be VMs)
+- **Master Nodes:** Minimum 3 hosts (**must be bare metal**)
 - **Worker Nodes:** Minimum 2 hosts (**must be bare metal**)
   - Each worker must have at least one SR-IOV-capable NIC (Intel E810 or XXV710)
   - Each worker needs separate NIC for management and default Kubernetes networking
@@ -92,6 +92,22 @@ The following operators must be installed and configured:
 - Container registry accessible from OpenShift cluster
 - Used for Decision Environment and Execution Environment images
 - Can be OpenShift internal registry or external registry
+
+#### Management Node Requirements 
+- **Ubuntu Node** (or similar Linux distribution) with cluster access (**can be VM/Baremetal**)
+- Required for image preparation and cluster management tasks
+- Must have the following utilities installed:
+  - **Docker CLI**: For building and pushing container images
+    - [Installation Guide](https://docs.docker.com/engine/install/ubuntu/)
+  - **OpenShift CLI (oc)**: For OpenShift cluster operations
+    - [Download from Red Hat](https://mirror.openshift.com/pub/openshift-v4/clients/ocp/)
+  - **kubectl**: For Kubernetes API interactions
+    - [Installation Guide](https://kubernetes.io/docs/tasks/tools/install-kubectl-linux/)
+- **Network connectivity** to:
+  - OpenShift cluster API endpoint
+  - Container registry for image operations
+  - Juniper Support portal for downloading images 
+
 
 ### Network Access Requirements
 
