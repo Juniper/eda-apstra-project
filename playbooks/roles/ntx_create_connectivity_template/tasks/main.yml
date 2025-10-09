@@ -66,12 +66,16 @@
 - name: Debug extracted VM information
   debug:
     msg: 
+      - "=== VM IDENTIFICATION DEBUG ==="
       - "Processing VM connectivity event"
       - "VM Name: {{ vm_name }}"
       - "VM UUID: {{ vm_uuid }}"
       - "Power State: {{ vm_power_state }}"
       - "Host: {{ vm_host_name }}"
       - "Blueprint Name: {{ blueprint_name }}"
+      - "Entity Name (raw): {{ entity.name }}"
+      - "Entity UUID: {{ entity.uuid }}"
+      - "Network interfaces count: {{ vm.network_interfaces | length }}"
       - "Primary connectivity:"
       - "  vSwitch UUID: {{ vswitch_uuid }}"
       - "  Physical Switch: {{ physical_switch }}"
@@ -151,6 +155,7 @@
     - application_points | length == 0
 
 # Get the virtual network name from the first interface - use subnet name instead of vswitch name
+# Get the virtual network name from the first interface - use subnet name instead of vswitch name
 - name: Extract virtual network information
   set_fact:
     # Use the subnet name as the virtual network identifier (more meaningful for Apstra)
@@ -176,7 +181,7 @@
       - "vswitch_name={{ vswitch_name }}"
       - "source_nutanix_eda"
       - "entity_type_vm"
-      - "event_type_connectivity"
+      - "event_type_connectivity_assign"
   when: vm_name is defined
 
 - name: Connect to Apstra
@@ -185,209 +190,8 @@
     logout: false
   register: auth
 
-- block:
-    - name: Get blueprint
-      juniper.apstra.blueprint:
-        body:
-          label: "{{ bluprint_label_value }}"
-        auth_token: "{{ auth.token }}"
-        lock_state: "ignore"
-      register: register_bp
-
-    - name: Create tags if connectivity_tags is defined and is a list
-      juniper.apstra.tag:
-        id: "{{ register_bp.id }}"
-        body:
-          label: "{{ tag }}"
-          description: "Nutanix EDA VM connectivity tag"
-        auth_token: "{{ auth.token }}"
-      when: connectivity_tags is defined and connectivity_tags | length > 0
-      loop: "{{ connectivity_tags }}"
-      loop_control:
-        loop_var: tag
-      ignore_errors: true  # Tags may already exist
-
-    - name: Check if virtual network exists
-      juniper.apstra.virtual_network:
-        id: "{{ register_bp.id }}"
-        label: "{{ vnet_label_value }}"
-        auth_token: "{{ auth.token }}"
-        state: query
-      register: vnet_check
-      ignore_errors: true
-
-    - name: Debug virtual network check result
-      debug:
-        msg: 
-          - "Checking virtual network: {{ vnet_label_value }}"
-          - "Check result: {{ 'exists' if not (vnet_check.failed | default(false)) else 'not found' }}"
-
-    - name: Create virtual network if it doesn't exist
-      juniper.apstra.virtual_network:
-        id: "{{ register_bp.id }}"
-        body:
-          label: "{{ vnet_label_value }}"
-          description: "Virtual network for Nutanix subnet {{ vnet_label_value }} on vSwitch {{ vswitch_name }}"
-          vn_type: "vxlan"
-        auth_token: "{{ auth.token }}"
-        state: present
-      register: vnet_create
-      when: vnet_check.failed | default(false)
-
-    - name: Debug virtual network creation result
-      debug:
-        msg: 
-          - "Virtual network {{ vnet_label_value }}: {{ 'created' if (vnet_create.changed | default(false)) else 'creation not needed' }}"
-          - "Creation result: {{ vnet_create | default('not attempted') }}"
-      when: vnet_check.failed | default(false)
-
-    - name: Update endpoint policy application points
-      juniper.apstra.endpoint_policy:
-        id: "{{ register_bp.id }}"
-        virtual_network_label: "{{ vnet_label_value }}"
-        tags: "{{ connectivity_tags if connectivity_tags is not none else omit }}"
-        body:
-          application_points: "{{ application_points }}"
-        state: present
-      register: ep_update
-      ignore_errors: true
-
-    - name: Handle endpoint policy creation if update failed
-      juniper.apstra.endpoint_policy:
-        id: "{{ register_bp.id }}"
-        virtual_network_label: "{{ vnet_label_value }}"
-        tags: "{{ connectivity_tags if connectivity_tags is not none else omit }}"
-        body:
-          application_points: "{{ application_points }}"
-        state: present
-      register: ep_create
-      when: ep_update.failed | default(false)
-
-    - name: Set final endpoint policy result
-      set_fact:
-        ep_final_result: "{{ ep_create if (ep_update.failed | default(false)) else ep_update }}"
-
-    - name: If endpoint policy changes are made, print success
-      debug:
-        msg: "Endpoint policy updated successfully: {{ ep_final_result.changed }}"
-      when: ep_final_result.changed | default(false)
-
-    - name: If endpoint policy changes are not made, print no change
-      debug:
-        msg: "Endpoint policy already up to date: {{ ep_final_result }}"
-      when: not (ep_final_result.changed | default(false))
-
-    - name: Handle endpoint policy failure
-      debug:
-        msg: 
-          - "Failed to create/update endpoint policy for virtual network: {{ vnet_label_value }}"
-          - "Error: {{ ep_final_result.msg | default('Unknown error') }}"
-      when: ep_final_result.failed | default(false)
-
-    # Update ConfigMap with VM connectivity information
-    - name: Create ConfigMap name from subnet name
-      set_fact:
-        connectivity_configmap_name: "{{ vnet_label_value }}-connectivity"
-
-    - name: Fetch or create connectivity ConfigMap
-      kubernetes.core.k8s_info:
-        kind: ConfigMap
-        name: "{{ connectivity_configmap_name }}"
-        namespace: juniper-apstra-eda
-      register: connectivity_cm
-      ignore_errors: true
-
-    - name: Prepare VM connectivity data
-      set_fact:
-        vm_connectivity_key: "{{ vm_name }}-{{ vm_host_name | regex_replace('[^a-zA-Z0-9]', '_') }}"
-        vm_connectivity_data:
-          vm_name: "{{ vm_name }}"
-          vm_uuid: "{{ vm_uuid }}"
-          host_name: "{{ vm_host_name }}"
-          host_uuid: "{{ vm_host_uuid }}"
-          power_state: "{{ vm_power_state }}"
-          network_interfaces: "{{ network_info }}"
-          application_points: "{{ application_points }}"
-          last_updated: "{{ nutanix_event.timestamp }}"
-
-    - name: Initialize ConfigMap data if it doesn't exist
-      set_fact:
-        existing_cm_data: {}
-      when: connectivity_cm.resources | length == 0
-
-    - name: Get existing ConfigMap data if it exists
-      set_fact:
-        existing_cm_data: "{{ connectivity_cm.resources[0].data | default({}) }}"
-      when: connectivity_cm.resources | length > 0
-
-    - name: Update ConfigMap data with VM connectivity
-      set_fact:
-        updated_cm_data: "{{ existing_cm_data | combine({vm_connectivity_key: (vm_connectivity_data | to_nice_json)}) }}"
-
-    - name: Create or update connectivity ConfigMap
-      kubernetes.core.k8s:
-        namespace: juniper-apstra-eda
-        definition:
-          apiVersion: v1
-          kind: ConfigMap
-          metadata:
-            name: "{{ connectivity_configmap_name }}"
-            labels:
-              managed-by: "nutanix-eda"
-              subnet: "{{ vnet_label_value }}"
-              vswitch: "{{ vswitch_name }}"
-          data: "{{ updated_cm_data }}"
-        state: present
-      register: cm_update
-
-    - name: Debug ConfigMap update result
-      debug:
-        msg: "Connectivity ConfigMap updated: {{ cm_update.changed }}"
-
-  rescue:
-    - name: Unlock the blueprint as task has failed
-      juniper.apstra.blueprint:
-        id: "{{ register_bp.id }}"
-        lock_state: "unlocked"
-        state: committed
-        auth_token: "{{ auth.token }}"
-      register: blueprint_unlock
-      ignore_errors: true
-
-    - name: Debug failure information
-      debug:
-        msg: 
-          - "VM connectivity template creation failed for VM: {{ vm_name }}"
-          - "Error details will be in the task output above"
-
-  always:
-    - name: Unlock the blueprint
-      juniper.apstra.blueprint:
-        id: "{{ register_bp.id }}"
-        lock_state: "unlocked"
-        state: committed
-        auth_token: "{{ auth.token }}"
-      register: blueprint_unlock
-      when: register_bp is defined
-
-    - name: Commit the blueprint
-      juniper.apstra.blueprint:
-        id: "{{ register_bp.id }}"
-        lock_state: "ignore"
-        state: committed
-        auth_token: "{{ auth.token }}"
-      register: blueprint_commit
-      when: register_bp is defined
-
-    - name: Final status report
-      debug:
-        msg:
-          - "=== Nutanix VM Connectivity Template Creation Complete ==="
-          - "VM Name: {{ vm_name }}"
-          - "Subnet: {{ vnet_label_value }}"
-          - "Virtual Switch: {{ vswitch_name }}"
-          - "Application Points: {{ application_points | length }}"
-          - "Host: {{ vm_host_name }}"
-          - "Blueprint: {{ blueprint_name }}"
-          - "Status: {{ 'Success' if (not (ep_final_result.failed | default(false))) else 'Failed' }}"
-      when: vm_name is defined
+- name: Process each network interface connectivity assignment
+  include_tasks: assign_connectivity_template.yml
+  loop: "{{ vm.network_interfaces }}"
+  loop_control:
+    loop_var: interface
