@@ -1,0 +1,56 @@
+---
+- name: Deploy and Configure AWX for Apstra EDA on Nutanix
+  hosts: localhost
+  gather_facts: false
+  connection: local
+  vars:
+    # AWX Configuration - Update these values as needed
+    awx_password: "admin123"
+    eda_controller_password: "admin123" 
+    apstra_password: "admin"
+    
+    # You can override any other variables from vars/main.yml here
+    # apstra_api_url: "https://your-apstra-server/api"
+    # apstra_username: "admin"
+    
+  roles:
+    - apstra-ntx-awx-configure
+
+  pre_tasks:
+    - name: Check if kubectl is available
+      command: kubectl version --client
+      register: kubectl_check
+      failed_when: false
+      
+    - name: Fail if kubectl is not available
+      fail:
+        msg: "kubectl is not available. Please ensure Kubernetes cluster is deployed and kubectl is configured."
+      when: kubectl_check.rc != 0
+      
+    - name: Check if Kubernetes certificate files exist
+      stat:
+        path: "{{ item }}"
+      register: cert_files
+      with_items:
+        - "/home/ubuntu/eda-apstra-project/build/apstra-ntx-awx-configure/files/kubernetes-sa.token"
+        - "/home/ubuntu/eda-apstra-project/build/apstra-ntx-awx-configure/files/kubernetes-ca.crt"
+      
+    - name: Fail if certificate files are missing
+      fail:
+        msg: "Kubernetes certificate files are missing. Please run /home/ubuntu/configure_awx.sh first."
+      when: cert_files.results | selectattr('stat.exists', 'equalto', false) | list | length > 0
+
+  post_tasks:
+    - name: Display AWX access information
+      debug:
+        msg: |
+          AWX deployment and configuration completed!
+          
+          AWX Controller URL: {{ awx_host }}
+          Username: {{ awx_username }}
+          Password: {{ awx_password }}
+          
+          Please access AWX using the URLs above and verify the configuration.
+          All job templates and credentials have been configured for Apstra integration.
+          
+          Note: For production use, consider using Ansible Vault to encrypt sensitive passwords.

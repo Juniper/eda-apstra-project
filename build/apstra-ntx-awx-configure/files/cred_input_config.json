@@ -1,0 +1,35 @@
+{
+  "fields": [
+    {
+      "id": "api_url",
+      "type": "string",
+      "label": "API URL",
+      "help_text": "The URL used to access the Apstra API"
+    },
+    {
+      "id": "verify_certificates",
+      "type": "boolean",
+      "label": "Verify Certificates",
+      "default": true,
+      "help_text": "Whether to verify SSL certificates"
+    },
+    {
+      "id": "username",
+      "type": "string",
+      "label": "Username",
+      "help_text": "The username for authentication"
+    },
+    {
+      "id": "password",
+      "type": "string",
+      "label": "Password",
+      "secret": true,
+      "help_text": "The password for authentication"
+    }
+  ],
+  "required": [
+    "api_url",
+    "username",
+    "password"
+  ]
+}

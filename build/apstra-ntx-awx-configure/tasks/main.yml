@@ -1,0 +1,217 @@
+---
+## Create token for Tower
+- name: Create a new token using username/password
+  awx.awx.token:
+    controller_host: "{{ awx_host }}"
+    controller_username: "{{ awx_username }}"
+    controller_password: "{{ awx_password }}"
+    description: "new token automated"
+    scope: "write"
+    state: present
+    validate_certs: false
+  register: token_result
+
+## Create Credential Type in Automation Controller
+- name: Add Credentials Type Apstra Juniper
+  awx.awx.credential_type:
+    controller_host: "{{ awx_host }}"
+    controller_username: "{{ awx_username }}"
+    controller_password: "{{ awx_password }}"
+    name: "Apstra Juniper"
+    description: "Apstra API and Credetials"
+    inputs: "{{ lookup('file', role_path + '/files/cred_input_config.json') }}"        
+    injectors: "{{ lookup('file', role_path + '/files/cred_injector_config.json') }}"
+    validate_certs: false
+    kind: "cloud"
+
+## Create Credentials in Automation Controller
+- name: Add Apstra Juniper Credential
+  awx.awx.credential:
+    controller_host: "{{ awx_host }}"
+    controller_username: "{{ awx_username }}"
+    controller_password: "{{ awx_password }}"
+    name: "apstra-cred"
+    description: "credentials for apstra"
+    credential_type: "Apstra Juniper"
+    inputs:
+      api_url: "{{ apstra_api_url }}"
+      username: "{{ apstra_username }}"
+      password: "{{ apstra_password }}"
+    validate_certs: false
+    organization: "{{ organization_name }}"
+
+- name: Add Kubernetes API Bearer Token Credential
+  awx.awx.credential:
+    controller_host: "{{ awx_host }}"
+    controller_username: "{{ awx_username }}"
+    controller_password: "{{ awx_password }}"
+    name: "apstra-kubernetes-cred"
+    description: "credentials for Kubernetes cluster"
+    credential_type: "OpenShift or Kubernetes API Bearer Token"
+    validate_certs: false
+    organization: "{{ organization_name }}"
+    inputs:
+      host: "{{ kubernetes_host }}"
+      bearer_token: "{{ lookup('file', role_path + '/files/kubernetes-sa.token') }}"
+      verify_ssl: false 
+      ssl_ca_cert: "{{ lookup('file', role_path + '/files/kubernetes-ca.crt') }}"
+
+
+## Create Inventory in Automation Controller
+- name: Add Inventory to Controller Instance
+  awx.awx.inventory:
+    controller_host: "{{ awx_host }}"
+    controller_username: "{{ awx_username }}"
+    controller_password: "{{ awx_password }}"
+    name: "Apstra Inventory"
+    description: "Inventory for Apstra EDA"
+    organization: "{{ organization_name }}"
+    state: present
+    instance_groups: ["default","controlplane"]
+    validate_certs: false
+
+
+## Create Execution Environment in Automation Controller
+- name: Add EE to the Controller Instance
+  awx.awx.execution_environment:
+    controller_host: "{{ awx_host }}"
+    controller_username: "{{ awx_username }}"
+    controller_password: "{{ awx_password }}"
+    name: "apstra-ee"
+    image: "{{ execution_environment_image_url }}"
+    validate_certs: false
+
+## Create Project in in Automation Controller
+- name: Add a Project in Automation Controller
+  awx.awx.project:
+    controller_host: "{{ awx_host }}"
+    controller_username: "{{ awx_username }}"
+    controller_password: "{{ awx_password }}"
+    name: "apstra-eda-project"
+    description: "Foo bar project"
+    organization: "{{ organization_name }}"
+    scm_type: "git"
+    scm_url: "{{ project_url }}"
+    default_environment: "apstra-ee"
+    scm_branch: "{{ project_scm_branch }}"
+    state: present
+    validate_certs: false
+
+# Create Job Templates in Automation Controller
+- name: Create Security Zone Job Template
+  awx.awx.job_template:
+    controller_host: "{{ awx_host }}"
+    controller_username: "{{ awx_username }}"
+    controller_password: "{{ awx_password }}"
+    name: "create-vrf"
+    description: "create securityzone/vrf in Apstra"
+    job_type: "run"
+    inventory: "Apstra Inventory"
+    project: "apstra-eda-project"
+    playbook: "playbooks/create-sz-playbook.yml"
+    state: "present"
+    validate_certs: false
+    credentials: ["apstra-cred","apstra-kubernetes-cred"]
+    execution_environment: "apstra-ee"
+    ask_variables_on_launch: true
+- name: Create Delete Security Zone Job Template
+  awx.awx.job_template:
+    controller_host: "{{ awx_host }}"
+    controller_username: "{{ awx_username }}"
+    controller_password: "{{ awx_password }}"
+    name: "delete-vrf"
+    description: "delete securityzone/vrf in Apstra"
+    job_type: "run"
+    inventory: "Apstra Inventory"
+    project: "apstra-eda-project"
+    playbook: "playbooks/delete-sz-playbook.yml"
+    state: "present"
+    validate_certs: false
+    credentials: ["apstra-cred","apstra-kubernetes-cred"]
+    execution_environment: "apstra-ee"
+    ask_variables_on_launch: true
+
+- name: Create Virtual Network Job Template
+  awx.awx.job_template:
+    controller_host: "{{ awx_host }}"
+    controller_username: "{{ awx_username }}"
+    controller_password: "{{ awx_password }}"
+    name: "create-vnet"
+    description: "create virtual network in Apstra"
+    job_type: "run"
+    inventory: "Apstra Inventory"
+    project: "apstra-eda-project"
+    playbook: "playbooks/create-vnet-playbook.yml"
+    state: "present"
+    validate_certs: false
+    credentials: ["apstra-cred","apstra-kubernetes-cred"]
+    execution_environment: "apstra-ee"
+    ask_variables_on_launch: true
+
+- name: Delete Virtual Network Job Template
+  awx.awx.job_template:
+    controller_host: "{{ awx_host }}"
+    controller_username: "{{ awx_username }}"
+    controller_password: "{{ awx_password }}"
+    name: "delete-vnet"
+    description: "delete virtual network in Apstra"
+    job_type: "run"
+    inventory: "Apstra Inventory"
+    project: "apstra-eda-project"
+    playbook: "playbooks/delete-vnet-playbook.yml"
+    state: "present"
+    validate_certs: false
+    credentials: ["apstra-cred","apstra-kubernetes-cred"]
+    execution_environment: "apstra-ee"
+    ask_variables_on_launch: true
+
+- name: Create Connectivity Template Job Template
+  awx.awx.job_template:
+    controller_host: "{{ awx_host }}"
+    controller_username: "{{ awx_username }}"
+    controller_password: "{{ awx_password }}"
+    name: "create-connectivity-template"
+    description: "Create connecitivity template in Apstra"
+    job_type: "run"
+    inventory: "Apstra Inventory"
+    project: "apstra-eda-project"
+    playbook: "playbooks/pod-create-playbook.yml"
+    state: "present"
+    validate_certs: false
+    credentials: ["apstra-cred","apstra-kubernetes-cred"]
+    execution_environment: "apstra-ee"
+    ask_variables_on_launch: true
+
+- name: Delete Connectivity Template Job Template
+  awx.awx.job_template:
+    controller_host: "{{ awx_host }}"
+    controller_username: "{{ awx_username }}"
+    controller_password: "{{ awx_password }}"
+    name: "delete-connectivity-template"
+    description: "delete connectivity template in Apstra"
+    job_type: "run"
+    inventory: "Apstra Inventory"
+    project: "apstra-eda-project"
+    playbook: "playbooks/delete-pod-playbook.yml"
+    state: "present"
+    validate_certs: false
+    credentials: ["apstra-cred","apstra-kubernetes-cred"]
+    execution_environment: "apstra-ee"
+    ask_variables_on_launch: true
+
+- name: Create Init Done Job Template
+  awx.awx.job_template:
+    controller_host: "{{ awx_host }}"
+    controller_username: "{{ awx_username }}"
+    controller_password: "{{ awx_password }}"
+    name: "init-done"
+    description: "sync all the objects in Apstra"
+    job_type: "run"
+    inventory: "Apstra Inventory"
+    project: "apstra-eda-project"
+    playbook: "playbooks/init-done-playbook.yml"
+    state: "present"
+    validate_certs: false
+    credentials: ["apstra-cred","apstra-kubernetes-cred"]
+    execution_environment: "apstra-ee"
+    ask_variables_on_launch: true

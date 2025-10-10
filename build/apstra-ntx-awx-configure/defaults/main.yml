@@ -1,0 +1,9 @@
+---
+# defaults file for apstra-ntx-awx-configure
+
+# Default values - these can be overridden in vars/main.yml or when calling the role
+
+# Common Variables
+organization_name: "Default"
+project_url: "https://github.com/Juniper/eda-apstra-project.git" 
+project_scm_branch: "main"

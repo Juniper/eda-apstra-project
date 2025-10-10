@@ -1,0 +1,20 @@
+---
+# vars file for apstra-ntx-awx-configure
+
+## It is best practice to use Ansible Vault to encrypt sensitive data such as passwords.
+
+# Kubernetes Configuration
+kubernetes_host: "https://10.84.128.57:6443"
+
+# AWX Configuration
+awx_host: "http://10.84.128.57:31743/"
+awx_username: "admin"
+awx_password: ""
+execution_environment_image_url: "s-artifactory.juniper.net/atom-docker/ee/apstra-ee:0.1.32"
+
+# Apstra Variables
+apstra_api_url: "https://10.84.128.67/api"
+apstra_username: "admin"
+apstra_password: "Apstrantx@2025"
+
+
