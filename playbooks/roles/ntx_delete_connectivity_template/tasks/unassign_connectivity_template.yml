@@ -1,0 +1,222 @@
+---
+# Unassign individual interface connectivity template
+- name: Debug interface connectivity unassignment start
+  debug:
+    msg: 
+      - "=== STARTING CONNECTIVITY UNASSIGNMENT FOR INTERFACE {{ interface.nic_index }} ==="
+      - "Interface subnet: {{ interface.subnet_name }}"
+      - "Interface MAC: {{ interface.mac_address }}"
+      - "Interface IP: {{ interface.ip_address }}"
+
+- name: Set interface-specific variables for connectivity unassignment
+  set_fact:
+    # Use current interface subnet_name as virtual network identifier
+    vnet_label_value: "{{ interface.subnet_name }}"
+    vswitch_name: "{{ interface.physical_connectivity.vswitch_name }}"
+    # Create application point for this specific interface
+    interface_application_points:
+      - remote_host: "{{ interface.physical_connectivity.physical_switch | default('ntx-' + vm_host_name | regex_replace('[^a-zA-Z0-9]', '-') + '-switch') }}"
+        if_name: "{{ interface.physical_connectivity.switch_port | default('eth-' + interface.nic_index | string) }}"
+        used: false  # Set to false for unassignment
+    # Set connectivity tags for this interface
+    connectivity_tags: 
+      - "vm_name={{ vm_name }}"
+      - "vm_uuid={{ vm_uuid }}"
+      - "host_name={{ vm_host_name }}"
+      - "subnet_name={{ interface.subnet_name }}"
+      - "vswitch_name={{ interface.physical_connectivity.vswitch_name }}"
+      - "nic_index={{ interface.nic_index }}"
+      - "source_nutanix_eda"
+      - "entity_type_vm"
+      - "event_type_connectivity_unassign"
+
+- name: Get blueprint
+  juniper.apstra.blueprint:
+    body:
+      label: "{{ bluprint_label_value }}"
+    auth_token: "{{ auth.token }}"
+    lock_state: "ignore"
+  register: register_bp
+
+- name: Debug blueprint information for connectivity unassignment
+  debug:
+    msg: 
+      - "Blueprint: {{ register_bp.id }}"
+      - "Blueprint label: {{ bluprint_label_value }}"
+      - "Unassigning connectivity for interface: {{ interface.nic_index }}"
+      - "Virtual network: {{ interface.subnet_name }}"
+
+- name: Check if virtual network exists for connectivity unassignment
+  juniper.apstra.virtual_network:
+    id: "{{ register_bp.id }}"
+    auth_token: "{{ auth.token }}"
+    tags: 
+      - "ntx_subnet={{ interface.subnet_name }}"
+      - "source=nutanix_eda"
+    state: present
+  register: vnet_check_by_tags
+  ignore_errors: true
+  check_mode: true
+
+- name: Debug virtual network existence for connectivity unassignment
+  debug:
+    msg:
+      - "=== VIRTUAL NETWORK EXISTENCE CHECK FOR CONNECTIVITY UNASSIGNMENT ==="
+      - "Interface: {{ interface.nic_index }}"
+      - "Searching for VNet with tags:"
+      - "  - ntx_subnet={{ interface.subnet_name }}"
+      - "  - source=nutanix_eda"
+      - "Check result: {{ 'SUCCESS' if vnet_check_by_tags is succeeded else 'FAILED' }}"
+      - "Error (if any): {{ vnet_check_by_tags.msg | default('No error') }}"
+      - "Will proceed with connectivity unassignment regardless of VNet existence"
+
+- name: Process interface connectivity unassignment
+  block:
+    - name: Debug endpoint policy unassignment parameters
+      debug:
+        msg:
+          - "=== ENDPOINT POLICY UNASSIGNMENT PARAMETERS ==="
+          - "Blueprint ID: {{ register_bp.id }}"
+          - "Virtual Network Label: {{ vnet_label_value }}"
+          - "Interface: {{ interface.nic_index }}"
+          - "Application Points: {{ interface_application_points }}"
+          - "Tags: {{ connectivity_tags }}"
+
+    - name: Unassign endpoint policy application points for interface
+      juniper.apstra.endpoint_policy:
+        id: "{{ register_bp.id }}"
+        virtual_network_label: "{{ vnet_label_value }}"
+        tags: "{{ connectivity_tags if connectivity_tags is not none else omit }}"
+        body:
+          application_points: "{{ interface_application_points }}"
+        state: present
+      register: ep_unassign
+      ignore_errors: true
+
+    - name: Debug endpoint policy unassignment result
+      debug:
+        msg: 
+          - "=== ENDPOINT POLICY UNASSIGNMENT RESULT FOR INTERFACE {{ interface.nic_index }} ==="
+          - "Virtual Network: {{ vnet_label_value }}"
+          - "Result: {{ 'SUCCESS' if not (ep_unassign.failed | default(false)) else 'FAILED' }}"
+          - "Changed: {{ ep_unassign.changed | default(false) }}"
+          - "Error (if any): {{ ep_unassign.msg | default('No error') }}"
+          - "Full response: {{ ep_unassign }}"
+
+    # Update ConfigMap to remove VM connectivity information for this interface
+    - name: Create ConfigMap name from subnet name
+      set_fact:
+        connectivity_configmap_name: "{{ vnet_label_value }}-connectivity"
+
+    - name: Fetch connectivity ConfigMap for interface removal
+      kubernetes.core.k8s_info:
+        kind: ConfigMap
+        name: "{{ connectivity_configmap_name }}"
+        namespace: juniper-apstra-eda
+      register: connectivity_cm
+      ignore_errors: true
+
+    - name: Remove VM connectivity data for this interface
+      set_fact:
+        vm_connectivity_key: "{{ vm_name }}-{{ vm_host_name | regex_replace('[^a-zA-Z0-9]', '_') }}-nic{{ interface.nic_index }}"
+
+    - name: Get existing ConfigMap data if it exists
+      set_fact:
+        existing_cm_data: "{{ connectivity_cm.resources[0].data | default({}) }}"
+      when: connectivity_cm.resources | length > 0
+
+    - name: Remove interface data from ConfigMap
+      set_fact:
+        updated_cm_data: "{{ existing_cm_data | dict2items | rejectattr('key', 'equalto', vm_connectivity_key) | items2dict }}"
+      when: connectivity_cm.resources | length > 0 and existing_cm_data is defined
+
+    - name: Update connectivity ConfigMap (remove interface data)
+      kubernetes.core.k8s:
+        namespace: juniper-apstra-eda
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: "{{ connectivity_configmap_name }}"
+            labels:
+              managed-by: "nutanix-eda"
+              subnet: "{{ vnet_label_value }}"
+              vswitch: "{{ vswitch_name }}"
+              interface: "nic{{ interface.nic_index }}"
+          data: "{{ updated_cm_data | default({}) }}"
+        state: present
+      register: cm_update
+      when: connectivity_cm.resources | length > 0
+
+    - name: Delete ConfigMap if no interfaces remain
+      kubernetes.core.k8s:
+        kind: ConfigMap
+        name: "{{ connectivity_configmap_name }}"
+        namespace: juniper-apstra-eda
+        state: absent
+      when: 
+        - connectivity_cm.resources | length > 0
+        - updated_cm_data is defined
+        - updated_cm_data | length == 0
+
+    - name: Debug ConfigMap update result
+      debug:
+        msg: "Connectivity ConfigMap updated for interface {{ interface.nic_index }} unassignment: {{ cm_update.changed | default('No update needed') }}"
+
+    - name: Unlock the blueprint
+      juniper.apstra.blueprint:
+        id: "{{ register_bp.id }}"
+        lock_state: "unlocked"
+        state: committed
+        auth_token: "{{ auth.token }}"
+      register: blueprint_unlock
+      when: register_bp is defined
+
+    - name: Commit the blueprint
+      juniper.apstra.blueprint:
+        id: "{{ register_bp.id }}"
+        lock_state: "ignore"
+        state: committed
+        auth_token: "{{ auth.token }}"
+      register: blueprint_commit
+      when: register_bp is defined
+
+    - name: Final status report for interface connectivity unassignment
+      debug:
+        msg:
+          - "=== Nutanix VM Connectivity Template Unassignment Complete ==="
+          - "VM Name: {{ vm_name }}"
+          - "Interface: {{ interface.nic_index }}"
+          - "Subnet: {{ interface.subnet_name }}"
+          - "Virtual Switch: {{ interface.physical_connectivity.vswitch_name }}"
+          - "Application Points: {{ interface_application_points | length }}"
+          - "Host: {{ vm_host_name }}"
+          - "Blueprint: {{ blueprint_name }}"
+          - "Status: {{ 'Success' if (not (ep_unassign.failed | default(false))) else 'Failed' }}"
+      when: vm_name is defined
+
+  rescue:
+    - name: Debug interface connectivity unassignment failure details
+      debug:
+        msg: 
+          - "=== INTERFACE {{ interface.nic_index }} CONNECTIVITY UNASSIGNMENT FAILED ==="
+          - "VM Name: {{ vm_name }}"
+          - "Interface: {{ interface.nic_index }}"
+          - "Subnet: {{ interface.subnet_name }}"
+          - "Error occurred during connectivity unassignment processing"
+
+    - name: Unlock the blueprint as connectivity unassignment task has failed
+      juniper.apstra.blueprint:
+        id: "{{ register_bp.id }}"
+        lock_state: "unlocked"
+        state: committed
+        auth_token: "{{ auth.token }}"
+      register: blueprint_unlock
+      ignore_errors: true
+
+    - name: Debug connectivity unassignment failure information
+      debug:
+        msg: 
+          - "VM connectivity template unassignment failed for VM: {{ vm_name }}"
+          - "Interface: {{ interface.nic_index }}"
+          - "Error details will be in the task output above"
