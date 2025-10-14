@@ -15,6 +15,6 @@ execution_environment_image_url: "s-artifactory.juniper.net/atom-docker/ee/apstr
 # Apstra Variables
 apstra_api_url: "https://10.84.128.67/api"
 apstra_username: "admin"
-apstra_password: "Apstrantx@2025"
+apstra_password: ""
 
 
