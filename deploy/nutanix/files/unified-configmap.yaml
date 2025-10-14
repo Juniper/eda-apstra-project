@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nutanix-eda-config
+  namespace: default
+  labels:
+    app: event-notification-service
+    version: v4-final
+data:
+  # Apstra Blueprint Name
+  BLUEPRINT_NAME: "apstra-ntx-bp"
+  # Nutanix Prism Central Configuration
+  NUTANIX_PRISM_CENTRAL_IP: "10.84.128.52"
+  NUTANIX_PRISM_CENTRAL_PORT: "9440"
+  NUTANIX_USERNAME: "admin"
+    
+  # Ansible Tower Configuration
+  ANSIBLE_TOWER_HOST: "10.84.128.65"
+  ANSIBLE_TOWER_PORT: "32006"
+  ANSIBLE_TOWER_USERNAME: "admin"
+  # ANSIBLE_TOWER_VERIFY_SSL: "false"
+  # ANSIBLE_TOWER_TIMEOUT: "30"
+  
+  # Monitoring Configuration
+  # MONITORING_CHECK_INTERVAL: "5"
+  # MONITORING_LOG_TO_FILE: "true"
+  # MONITORING_LOG_DIRECTORY: "/app/logs"
+  # MONITORING_MONITOR_NETWORKS: "true"
+  # MONITORING_MONITOR_VMS: "true"
+  # MONITORING_MONITOR_VIRTUAL_SWITCHES: "true"
+  
+  # Network Defaults
+  # NETWORK_DEFAULT_TYPE: "EXTERNAL"
+  # NETWORK_VLAN_RANGE_MIN: "1"
+  # NETWORK_VLAN_RANGE_MAX: "4094"
+  
+  # API Configuration
+  # API_TIMEOUT: "30"
+  # API_VERIFY_SSL: "false"
+  # API_MAX_RETRIES: "3"
+  
+  # Job Template Mappings
+  # JOB_TEMPLATE_NETWORK_CREATE: "create-vnet"
+  # JOB_TEMPLATE_NETWORK_MODIFY: "create-vnet"
+  # JOB_TEMPLATE_NETWORK_DELETE: "delete-vnet"
+  # JOB_TEMPLATE_VM_CREATE: "create-connectivity-template"
+  # JOB_TEMPLATE_VM_MODIFY: "create-connectivity-template"
+  # JOB_TEMPLATE_VM_DELETE: "delete-connectivity-template"
+  # JOB_TEMPLATE_VIRTUAL_SWITCH_CREATE: "create-vrf"
+  # JOB_TEMPLATE_VIRTUAL_SWITCH_MODIFY: "create-vrf"
+  # JOB_TEMPLATE_VIRTUAL_SWITCH_DELETE: "delete-vrf"
+  
+  # Ansible Settings
+  # ANSIBLE_ENABLED: "true"
+  # ANSIBLE_MAX_RETRIES: "3"
+  # ANSIBLE_RETRY_DELAY: "5"
+  # ANSIBLE_NETWORK_EVENTS: "create,modify,delete"
+  # ANSIBLE_VM_EVENTS: "create,modify,delete"
+  # ANSIBLE_VIRTUAL_SWITCH_EVENTS: "create,modify,delete"
