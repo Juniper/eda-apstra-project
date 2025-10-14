@@ -108,7 +108,7 @@
     job_type: "run"
     inventory: "Apstra Inventory"
     project: "apstra-eda-project"
-    playbook: "playbooks/create-sz-playbook.yml"
+    playbook: "playbooks/ntx-create-sz.yml"
     state: "present"
     validate_certs: false
     credentials: ["apstra-cred","apstra-kubernetes-cred"]
@@ -124,7 +124,7 @@
     job_type: "run"
     inventory: "Apstra Inventory"
     project: "apstra-eda-project"
-    playbook: "playbooks/delete-sz-playbook.yml"
+    playbook: "playbooks/ntx-delete-sz.yml"
     state: "present"
     validate_certs: false
     credentials: ["apstra-cred","apstra-kubernetes-cred"]
@@ -141,7 +141,7 @@
     job_type: "run"
     inventory: "Apstra Inventory"
     project: "apstra-eda-project"
-    playbook: "playbooks/create-vnet-playbook.yml"
+    playbook: "playbooks/ntx-create-vnet.yml"
     state: "present"
     validate_certs: false
     credentials: ["apstra-cred","apstra-kubernetes-cred"]
@@ -158,7 +158,7 @@
     job_type: "run"
     inventory: "Apstra Inventory"
     project: "apstra-eda-project"
-    playbook: "playbooks/delete-vnet-playbook.yml"
+    playbook: "playbooks/ntx-delete-vnet.yml"
     state: "present"
     validate_certs: false
     credentials: ["apstra-cred","apstra-kubernetes-cred"]
@@ -175,7 +175,7 @@
     job_type: "run"
     inventory: "Apstra Inventory"
     project: "apstra-eda-project"
-    playbook: "playbooks/pod-create-playbook.yml"
+    playbook: "playbooks/ntx-create-vm.yml"
     state: "present"
     validate_certs: false
     credentials: ["apstra-cred","apstra-kubernetes-cred"]
@@ -192,24 +192,7 @@
     job_type: "run"
     inventory: "Apstra Inventory"
     project: "apstra-eda-project"
-    playbook: "playbooks/delete-pod-playbook.yml"
-    state: "present"
-    validate_certs: false
-    credentials: ["apstra-cred","apstra-kubernetes-cred"]
-    execution_environment: "apstra-ee"
-    ask_variables_on_launch: true
-
-- name: Create Init Done Job Template
-  awx.awx.job_template:
-    controller_host: "{{ awx_host }}"
-    controller_username: "{{ awx_username }}"
-    controller_password: "{{ awx_password }}"
-    name: "init-done"
-    description: "sync all the objects in Apstra"
-    job_type: "run"
-    inventory: "Apstra Inventory"
-    project: "apstra-eda-project"
-    playbook: "playbooks/init-done-playbook.yml"
+    playbook: "playbooks/ntx-delete-vm.yml"
     state: "present"
     validate_certs: false
     credentials: ["apstra-cred","apstra-kubernetes-cred"]
