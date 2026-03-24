@@ -191,8 +191,8 @@ prompt_for_configuration() {
     # Execution Environment
     echo
     echo "Execution Environment:"
-    read -p "Execution Environment Image URL [s-artifactory.juniper.net/atom-docker/ee/apstra-ee:0.1.32]: " EE_IMAGE_URL
-    EE_IMAGE_URL=${EE_IMAGE_URL:-s-artifactory.juniper.net/atom-docker/ee/apstra-ee:0.1.32}
+    read -p "Execution Environment Image URL [s-artifactory.juniper.net/atom-docker/ee/apstra-ee:1.0.6]: " EE_IMAGE_URL
+    EE_IMAGE_URL=${EE_IMAGE_URL:-s-artifactory.juniper.net/atom-docker/ee/apstra-ee:1.0.6}
     
     echo
     echo "✓ Configuration collected"
