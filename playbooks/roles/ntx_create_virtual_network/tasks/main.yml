@@ -197,6 +197,7 @@
   loop: "{{ nutanix_tags }}"
   loop_control:
     loop_var: tag
+  ignore_errors: true  # Tag may already exist with null description; Apstra returns 404 on PATCH for existing blueprint tags
 
 - name: Prepare virtual network data for Apstra (preserving integer types)
   ansible.builtin.set_fact:

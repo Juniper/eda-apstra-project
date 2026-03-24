@@ -54,10 +54,10 @@
     vm_power_state: "{{ vm.power_state }}"
     vm_host_name: "{{ vm.host_info.host_name | default('Unknown') }}"
     vm_host_uuid: "{{ vm.host_info.host_uuid }}"
-    # Primary connectivity variables for easy access
-    vswitch_uuid: "{{ vm.primary_connectivity.vswitch_uuid | default(null) }}"
-    physical_switch: "{{ vm.primary_connectivity.physical_switch | default(null) }}"
-    host_name: "{{ vm.primary_connectivity.host_name | default(vm.host_info.host_name) }}"
+    # Primary connectivity variables for easy access - handle missing primary_connectivity
+    vswitch_uuid: "{{ vm.primary_connectivity.vswitch_uuid | default(null) if vm.primary_connectivity is defined else null }}"
+    physical_switch: "{{ vm.primary_connectivity.physical_switch | default(null) if vm.primary_connectivity is defined else null }}"
+    host_name: "{{ vm.primary_connectivity.host_name | default(vm.host_info.host_name) if vm.primary_connectivity is defined else vm.host_info.host_name }}"
   when: 
     - nutanix_event is defined
     - entity is defined
