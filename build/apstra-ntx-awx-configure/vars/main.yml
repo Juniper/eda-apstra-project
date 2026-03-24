@@ -10,7 +10,7 @@ kubernetes_host: "https://10.84.128.57:6443"
 awx_host: "http://10.84.128.57:31743/"
 awx_username: "admin"
 awx_password: ""
-execution_environment_image_url: "s-artifactory.juniper.net/atom-docker/ee/apstra-ee:0.1.32"
+execution_environment_image_url: "s-artifactory.juniper.net/atom-docker/ee/apstra-ee:1.0.6"
 
 # Apstra Variables
 apstra_api_url: "https://10.84.128.67/api"
