@@ -136,15 +136,6 @@ A dedicated management node is required for image preparation, cluster managemen
   - **(Optional)** https://github.com/Juniper/apstra-ansible-collection — Customize the solution, playbooks, and learn how to use modules with Apstra Ansible.
   - **(Optional)** https://github.com/Juniper/k8s.eda — Explains how to use the Kubernetes event source for Ansible. Also, you can use this repository to run events for other resources.
 
-#### Container Registry Authentication
-
-Before loading and pushing images, authenticate to your container registry:
-
-```bash
-docker login <your-registry-hostname>
-# Enter your registry credentials when prompted
-```
-
 ### Notes
 
 - Juniper Apstra EDA only recognizes objects that are labeled with `type=eda`.
@@ -159,6 +150,15 @@ IN THIS SECTION
 - Download and Install the Execution Environment
 
 Follow these steps to download and install your Execution and Decision environments.
+
+### Container Registry Authentication
+
+Before loading and pushing images, authenticate to your container registry:
+
+```bash
+docker login <your-registry-hostname>
+# Enter your registry credentials when prompted
+```
 
 ### Download and Install the Decision Environment on Management Node
 
@@ -433,12 +433,12 @@ You can use Ansible Role to configure Ansible Automation Controller (Ansible Tow
 | `automation_controller_host` | yes | String | Ansible Automation Controller URL. Go to Operators → Ansible Automation Platform → All Instances → Automation Controller → URL |
 | `automation_controller_username` | yes | String | Automation Controller username |
 | `automation_controller_password` | yes | String | Automation Controller password |
-| `execution_environment_image_url` | yes | String | Full image URL for the Execution Environment pushed to your registry (without tag), e.g., `<your-registry>/apstra-ee-x86_64-6.0.0` |
+| `execution_environment_image_url` | yes | String | Full image URL for the Execution Environment pushed to your registry (including tag), e.g., `<your-registry>/apstra-ee-x86_64-6.0.0:latest` |
 | `eda_controller_host` | yes | String | Ansible EDA controller URL. Go to Operators → Ansible Automation Platform → All Instances → Automation EDA → URL |
 | `eda_controller_username` | yes | String | Ansible EDA controller username |
 | `eda_controller_password` | yes | String | Ansible EDA controller password |
 | `controller_api` | yes | String | API endpoint of Ansible controller, e.g., `https://aap-<name>.apps.<cluster-domain>/api/controller/` |
-| `decision_environment_image_url` | yes | String | Full image URL for the Decision Environment pushed to your registry (without tag), e.g., `<your-registry>/juniper-k8s-de-x86_64-6.0.0` |
+| `decision_environment_image_url` | yes | String | Full image URL for the Decision Environment pushed to your registry (including tag), e.g., `<your-registry>/juniper-k8s-de-x86_64-6.0.0:latest` |
 | `apstra_api_url` | yes | String | URL for the Apstra API, e.g., `https://<apstra-host>/api` |
 | `apstra_username` | yes | String | Username for Apstra |
 | `apstra_password` | yes | String | Password for Apstra (sensitive — consider using Ansible Vault) |
@@ -500,8 +500,6 @@ ansible-playbook apstra-eda-build.yaml \
   -e "@apstra-aap-configure/vars/main.yml" \
   -v
 ```
-
-Expected output: all tasks succeed with `changed=18` and `failed=0`.
 
 ---
 
@@ -646,6 +644,7 @@ spec:
       vnet: <vnet-name>
   template:
     metadata:
+      name: vn1-deployment
       labels:
         type: eda
         vnet: <vnet-name>
@@ -659,19 +658,19 @@ spec:
           }
         ]'
     spec:
-      nodeSelector:
-        kubernetes.io/hostname: <worker-node-name>
       containers:
         - name: iperf3
           image: centos/tools
           command: ["/bin/bash", "-c", "--"]
           args: ["while true; do sleep 300000; done;"]
-          resources:
-            requests:
-              openshift.io/<interface-name>_vfs: "1"
-            limits:
-              openshift.io/<interface-name>_vfs: "1"
 ```
+
+> **Tip:** If your cluster has some worker nodes without LLDP neighbors on Apstra-managed leaf switches, add a `nodeSelector` under `spec` to pin the pod to a known-good node:
+> ```yaml
+>     spec:
+>       nodeSelector:
+>         kubernetes.io/hostname: <worker-node-name>
+> ```
 
 ```bash
 oc apply -f deployment-vn1.yaml
