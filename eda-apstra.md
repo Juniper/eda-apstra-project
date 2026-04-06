@@ -552,30 +552,7 @@ kubectl config view --raw \
   | base64 -d > eda-apstra-project/build/apstra-aap-configure/files/openshift-ca.crt
 ```
 
-**Step 5: Get the Kubernetes API server URL**
 
-```bash
-kubectl config view --raw -o jsonpath='{.clusters[0].cluster.server}'
-```
-
-**Step 6: Get AAP component URLs**
-
-AAP component URLs follow the pattern `https://aap-<component>-<namespace>.apps.<cluster-domain>`. To retrieve the AAP admin password:
-
-```bash
-oc get secret aap-admin-password -n aap -o jsonpath='{.data.password}' | base64 -d
-```
-
-**Table: AAP URL Patterns**
-
-| Component | URL Pattern Example |
-|---|---|
-| Gateway | `https://aap-<aap-cr-name>.apps.<cluster-domain>` |
-| Automation Controller | `https://aap-controller-<aap-cr-name>.apps.<cluster-domain>` |
-| Event-Driven Ansible (EDA) | `https://aap-eda-<aap-cr-name>.apps.<cluster-domain>` |
-| Automation Hub | `https://aap-hub-<aap-cr-name>.apps.<cluster-domain>` |
-
-> **Connectivity Note:** All AAP hostnames must be resolvable from the management node. If DNS does not cover the `.apps.<cluster-domain>` wildcard, add the ingress/router IP to `/etc/hosts` on the management node for all AAP component hostnames.
 
 For more information about how to create an OpenShift or Kubernetes API Bearer Token credential, see [OpenShift or Kubernetes API Bearer Token](https://docs.ansible.com/automation-controller/latest/html/userguide/credentials.html#openshift-or-kubernetes-api-bearer-token).
 
@@ -670,21 +647,31 @@ Follow these steps to use NMState to enable LLDP on your SR-IOV nodes.
 2. Verify LLDP neighbors are visible. Issue the following command and confirm that leaf switch neighbors appear under each interface:
 
    ```bash
-   oc get NodeNetworkState <nodeName> -o yaml
+   oc get NodeNetworkState <nodeName> -o yaml | python3 -c "
+   import sys, yaml
+   state = yaml.safe_load(sys.stdin)
+   for iface in state['status']['currentState']['interfaces']:
+       neighbors = iface.get('lldp', {}).get('neighbors', [])
+       if neighbors:
+           print('interface:', iface['name'])
+           for n in neighbors:
+               for e in n:
+                   if e.get('type') == 5: print('  system-name:', e.get('system-name'))
+                   if e.get('type') == 2: print('  port-id:', e.get('port-id'))
+           print()
+   "
    ```
 
-   Expected output (condensed):
+   Expected output:
 
-   ```yaml
-   interfaces:
-     - name: <interface-name>
-       lldp:
-         enabled: true
-         neighbors:
-           - - type: system-name
-               system-name: <leaf-switch-hostname>
-             - type: port-id
-               port-id: <switch-port>
+   ```
+   interface: <interface-name-1>
+     system-name: <leaf-switch-hostname>
+     port-id: <switch-port>
+
+   interface: <interface-name-2>
+     system-name: <leaf-switch-hostname>
+     port-id: <switch-port>
    ```
 
    > **Important:** Only interfaces that show LLDP neighbors connected to Apstra-managed leaf switches can be used for SR-IOV virtual networks and connectivity templates. Pods deployed on interfaces without LLDP neighbors will cause the `create-connectivity-template` automation job to fail. Verify per-node LLDP connectivity before proceeding.
@@ -805,7 +792,43 @@ cd eda-apstra-project/build
 
 **Step 2: Populate the variables file**
 
-Edit `apstra-aap-configure/vars/main.yml` with the values for your environment. Refer to the Role Variables table above for descriptions of each variable.
+Edit `apstra-aap-configure/vars/main.yml` with the values for your environment. Use the commands below to retrieve each required value:
+
+**`kubernetes_host`:**
+```bash
+kubectl config view --raw -o jsonpath='{.clusters[0].cluster.server}'; echo
+```
+
+**`automation_controller_host`:**
+```bash
+echo "https://$(oc get route aap-controller -n aap -o jsonpath='{.spec.host}')/"
+```
+
+**`automation_controller_password`:**
+```bash
+oc get secret aap-controller-admin-password -n aap -o jsonpath='{.data.password}' | base64 -d; echo
+```
+
+**`eda_controller_host`:**
+```bash
+echo "https://$(oc get route aap-eda -n aap -o jsonpath='{.spec.host}')/"
+```
+
+**`eda_controller_password`:**
+```bash
+oc get secret aap-eda-admin-password -n aap -o jsonpath='{.data.password}' | base64 -d; echo
+```
+
+**`controller_api`:**
+```bash
+echo "https://$(oc get route aap -n aap -o jsonpath='{.spec.host}')/api/controller/"
+```
+
+**`execution_environment_image_url`** and **`decision_environment_image_url`** — Use the full image URLs (including tag) from the registry push steps in [Download and Installation of Environments](#download-and-installation-of-environments).
+
+**`apstra_api_url`** — `https://<apstra-host>/api`
+
+**`apstra_blueprint_name`**, **`apstra_username`**, **`apstra_password`** — Use the blueprint name, username, and password from your Apstra instance.
 
 **Step 3: Copy credential files**
 
