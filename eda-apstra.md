@@ -647,19 +647,7 @@ Follow these steps to use NMState to enable LLDP on your SR-IOV nodes.
 2. Verify LLDP neighbors are visible. Issue the following command and confirm that leaf switch neighbors appear under each interface:
 
    ```bash
-   oc get NodeNetworkState <nodeName> -o yaml | python3 -c "
-   import sys, yaml
-   state = yaml.safe_load(sys.stdin)
-   for iface in state['status']['currentState']['interfaces']:
-       neighbors = iface.get('lldp', {}).get('neighbors', [])
-       if neighbors:
-           print('interface:', iface['name'])
-           for n in neighbors:
-               for e in n:
-                   if e.get('type') == 5: print('  system-name:', e.get('system-name'))
-                   if e.get('type') == 2: print('  port-id:', e.get('port-id'))
-           print()
-   "
+   oc get NodeNetworkState <nodeName> -o json | jq -r '.status.currentState.interfaces[] | select(.lldp.neighbors | length > 0) | "interface: \(.name)", (.lldp.neighbors[][] | select(.type==5) | "  system-name: \(.["system-name"])"), (.lldp.neighbors[][] | select(.type==2) | "  port-id: \(.["port-id"])"), ""'
    ```
 
    Expected output:
