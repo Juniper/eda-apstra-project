@@ -758,14 +758,14 @@ You can use Ansible Role to configure Ansible Automation Controller (Ansible Tow
 
 ### Files
 
-The following files in `build/apstra-aap-configure/files/` must be prepared before running the playbook:
+The following files in `build/apstra-aap-configure/files/` must be present before running the playbook. Only the two token/certificate files require action — they are generated in the [Create OpenShift or Kubernetes API Bearer Token Credentials](#create-openshift-or-kubernetes-api-bearer-token-credentials) section. The JSON credential config files are static and must not be modified.
 
-| Name | Required to Change | Comments |
+| Name | Action Required | Comments |
 |---|---|---|
-| `cred_injector_config.json` | No | Used to create Apstra credential types in Ansible Automation Platform. |
-| `cred_input_config.json` | No | Used to create Apstra credential types in Ansible Automation Platform. |
-| `openshift-ca.crt` | Yes | Certificate Authority data for the OpenShift Cluster. See Step 4 in the Bearer Token section. |
-| `openshift-sa.token` | Yes | API authentication bearer token of the service account (`aap-access`) for OpenShift. See Step 3 in the Bearer Token section. |
+| `openshift-ca.crt` | **Yes** — generate using Step 4 in the Bearer Token section | Cluster CA certificate for OpenShift authentication |
+| `openshift-sa.token` | **Yes** — generate using Step 3 in the Bearer Token section | Service account bearer token for OpenShift authentication |
+| `cred_injector_config.json` | No — do not modify | Static template used by the playbook to create Apstra credential types in AAP |
+| `cred_input_config.json` | No — do not modify | Static template used by the playbook to create Apstra credential types in AAP |
 
 ### Configuring Ansible Automation Platform
 
