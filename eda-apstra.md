@@ -584,8 +584,55 @@ For more information about how to create an OpenShift or Kubernetes API Bearer T
 ## Decision Automation
 
 IN THIS SECTION
+- Prerequisites
 - Configure SR-IOV Nodes
 - Mappings of OpenShift Objects with Apstra Objects
+
+### Prerequisites
+
+Before configuring SR-IOV nodes, verify that the Kubernetes NMState Operator and the SR-IOV Network Operator are installed and running in your cluster.
+
+**Verify the Kubernetes NMState Operator:**
+
+```bash
+# Check the operator CSV is Succeeded
+oc get csv -n openshift-nmstate | grep nmstate
+
+# Check the NMState CR exists and handler pods are running
+oc get NMState
+oc get pods -n openshift-nmstate
+```
+
+Expected output:
+
+```
+NAME                                               DISPLAY                       VERSION              PHASE
+kubernetes-nmstate-operator.4.17.0-202501301304   Kubernetes NMState Operator   4.17.0-202501301304  Succeeded
+```
+
+All `nmstate-handler-*` pods must show `Running`. One handler pod runs on each node.
+
+**Verify the SR-IOV Network Operator:**
+
+```bash
+# Check the operator CSV is Succeeded
+oc get csv -n openshift-sriov-network-operator | grep sriov
+
+# Check the SriovOperatorConfig exists and operator pods are running
+oc get SriovOperatorConfig -n openshift-sriov-network-operator
+oc get pods -n openshift-sriov-network-operator
+```
+
+Expected output:
+
+```
+NAME                                         DISPLAY                 VERSION              PHASE
+sriov-network-operator.v4.17.0-202501230004  SR-IOV Network Operator 4.17.0-202501230004  Succeeded
+```
+
+The `network-resources-injector-*` and `operator-webhook-*` pods must show `Running`.
+
+> **If either operator is not installed**, refer to the [Required OpenShift Operators](#required-openshift-operators) section and install them before continuing.
 
 ### Configure SR-IOV Nodes
 
