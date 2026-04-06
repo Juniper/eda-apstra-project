@@ -6,6 +6,7 @@ IN THIS GUIDE
 - Overview
 - Before You Start
 - Download and Installation of Environments
+- Install Ansible Automation Platform on OpenShift
 - Automation Execution
 - Decision Automation
 - Ansible Automation Platform
@@ -58,7 +59,7 @@ The following operators must be installed and configured:
 - **Red Hat Ansible Automation Platform Operator**
   - Provides Automation Controller and Event-Driven Ansible
   - Enables rulebook activation and job execution
-  - For information on how to install OpenShift Operators, see https://github.com/Juniper/eda-apstra-project/blob/main/README.md#phase-3-lldp-configuration and https://github.com/Juniper/eda-apstra-project/blob/main/README.md#phase-4-sr-iov-node-policies.
+  - For step-by-step installation instructions, see [Install Ansible Automation Platform on OpenShift](#install-ansible-automation-platform-on-openshift) in this guide.
 
 - **Kubernetes NMState Operator**
   - Manages network interface configuration
@@ -221,6 +222,296 @@ docker login <your-registry-hostname>
       ```bash
       docker push <your-registry>/apstra-ee-x86_64-6.0.0:latest
       ```
+
+---
+
+## Install Ansible Automation Platform on OpenShift
+
+IN THIS SECTION
+- Prerequisites
+- Step 1 — Create the Namespace and OperatorGroup
+- Step 2 — Configure the Red Hat Registry Pull Secret
+- Step 3 — Create the Operator Subscription
+- Step 4 — Approve the InstallPlan
+- Step 5 — Deploy the AnsibleAutomationPlatform CR
+- Step 6 — Verify the Installation
+- Step 7 — Retrieve Admin Credentials
+
+Follow these steps to install the Ansible Automation Platform (AAP) Operator on your OpenShift cluster and deploy an AAP instance. The verified version used in this guide is AAP **2.5** (Operator CSV `aap-operator.v2.5.0-0.1737675968`, Controller `4.6.7`).
+
+> **Before you begin:** You must be logged in to the OpenShift cluster as a `cluster-admin` user.
+> ```bash
+> oc login https://api.<cluster-domain>:6443 -u kubeadmin
+> oc whoami   # must return cluster-admin
+> ```
+
+### Prerequisites
+
+- OpenShift cluster is running and healthy
+- The `nfs-client` StorageClass (or your preferred RWX-capable StorageClass) is available:
+  ```bash
+  oc get storageclass
+  ```
+- Your cluster global pull secret includes credentials for `registry.redhat.io` (required to pull Red Hat images):
+  ```bash
+  oc get secret pull-secret -n openshift-config \
+    -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d | python3 -m json.tool | grep registry.redhat.io
+  ```
+  If `registry.redhat.io` is missing, add it via the OpenShift console under **Cluster Settings → Global Pull Secret**, or contact your Red Hat account team for registry credentials.
+
+### Step 1 — Create the Namespace and OperatorGroup
+
+Create the `aap` namespace and an `OperatorGroup` that scopes the operator to that namespace:
+
+```bash
+cat <<'EOF' | oc apply -f -
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aap
+---
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: aap-operatorgroup
+  namespace: aap
+spec:
+  targetNamespaces:
+    - aap
+EOF
+```
+
+Verify the namespace and OperatorGroup are created:
+
+```bash
+oc get namespace aap
+oc get operatorgroup -n aap
+```
+
+### Step 2 — Configure the Red Hat Registry Pull Secret
+
+The operator pods must pull images from `registry.redhat.io`. Copy the cluster-level pull secret into the `aap` namespace:
+
+```bash
+oc get secret pull-secret -n openshift-config \
+  -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d > /tmp/dockerconfig.json
+
+oc create secret generic redhat-operators-pull-secret \
+  --from-file=operator=/tmp/dockerconfig.json \
+  -n aap
+```
+
+Verify the secret was created:
+
+```bash
+oc get secret redhat-operators-pull-secret -n aap
+```
+
+### Step 3 — Create the Operator Subscription
+
+Create a `Subscription` object pointing to the `stable-2.5` channel in the Red Hat operator catalog. Setting `installPlanApproval: Manual` with a pinned `startingCSV` ensures you install the exact tested version and do not auto-upgrade:
+
+```bash
+cat <<'EOF' | oc apply -f -
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: ansible-automation-platform-operator
+  namespace: aap
+spec:
+  channel: stable-2.5
+  installPlanApproval: Manual
+  name: ansible-automation-platform-operator
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  startingCSV: aap-operator.v2.5.0-0.1737675968
+EOF
+```
+
+> **Note:** The `startingCSV` value `aap-operator.v2.5.0-0.1737675968` is the verified CSV for AAP 2.5 (platform version `2.5.20250115`, Controller `4.6.7`). A newer CSV may be available in the catalog. To use the latest available 2.5 version, omit the `startingCSV` field, or check the available CSVs with:
+> ```bash
+> oc get packagemanifest ansible-automation-platform-operator -n openshift-marketplace \
+>   -o jsonpath='{.status.channels[?(@.name=="stable-2.5")].currentCSV}'
+> ```
+
+Verify the Subscription is created:
+
+```bash
+oc get subscription -n aap
+```
+
+### Step 4 — Approve the InstallPlan
+
+Because `installPlanApproval` is set to `Manual`, the operator will not install until you explicitly approve the generated `InstallPlan`.
+
+**Wait for the InstallPlan to appear** (typically 15–30 seconds):
+
+```bash
+oc get installplan -n aap
+```
+
+**Approve the pending InstallPlan:**
+
+```bash
+INSTALL_PLAN=$(oc get installplan -n aap \
+  -o jsonpath='{.items[?(@.spec.approved==false)].metadata.name}')
+echo "Approving InstallPlan: $INSTALL_PLAN"
+
+oc patch installplan "$INSTALL_PLAN" -n aap \
+  --type merge --patch '{"spec":{"approved":true}}'
+```
+
+**Wait for the operator CSV to reach `Succeeded` phase** (typically 3–5 minutes):
+
+```bash
+watch oc get csv -n aap
+```
+
+Expected output when ready:
+
+```
+NAME                               DISPLAY                       VERSION              PHASE
+aap-operator.v2.5.0-0.1737675968   Ansible Automation Platform   2.5.0+0.1737675968   Succeeded
+```
+
+> **Important:** Do not proceed to Step 5 until the CSV shows `Succeeded`. If it remains in `Installing` for more than 10 minutes, check operator pod logs:
+> ```bash
+> oc logs -n aap -l app.kubernetes.io/name=aap-gateway-operator -c manager
+> ```
+
+### Step 5 — Deploy the AnsibleAutomationPlatform CR
+
+Create the top-level `AnsibleAutomationPlatform` custom resource. The operator uses this single CR to automatically provision all sub-components: Automation Controller, Automation Hub, Event-Driven Ansible (EDA), PostgreSQL, and Redis.
+
+```bash
+cat <<'EOF' | oc apply -f -
+apiVersion: aap.ansible.com/v1alpha1
+kind: AnsibleAutomationPlatform
+metadata:
+  name: aap
+  namespace: aap
+spec:
+  api:
+    log_level: INFO
+    replicas: 1
+  database:
+    postgres_data_volume_init: false
+    postgres_storage_class: nfs-client      # Replace with your StorageClass if different
+  image_pull_policy: Always
+  no_log: true
+  redis_mode: standalone
+  route_tls_termination_mechanism: Edge
+EOF
+```
+
+> **StorageClass note:** The `postgres_storage_class` value must match a StorageClass available in your cluster. The Automation Hub file storage PVC (100 Gi, RWX) and the Redis data PVC (1 Gi, RWO) are also automatically created using this storage class.
+
+**Monitor deployment progress:**
+
+```bash
+# Watch the top-level AAP CR status conditions
+watch oc get ansibleautomationplatform aap -n aap
+
+# Watch all pods starting up (full deployment takes 5–15 minutes)
+watch oc get pods -n aap
+```
+
+The operator provisions resources in this order:
+
+1. PostgreSQL 15 StatefulSet (`aap-postgres-15`)
+2. Redis StatefulSet (`aap-redis`)
+3. Gateway deployment (`aap-gateway`)
+4. `AutomationController` sub-CR and pods (`aap-controller-task`, `aap-controller-web`)
+5. `AutomationHub` sub-CR and pods (`aap-hub-api`, `aap-hub-content`, `aap-hub-web`, `aap-hub-worker`)
+6. `EDA` sub-CR and pods (`aap-eda-api`, `aap-eda-activation-worker`, `aap-eda-default-worker`, `aap-eda-scheduler`, `aap-eda-event-stream`)
+
+### Step 6 — Verify the Installation
+
+**Verify all pods are Running:**
+
+```bash
+oc get pods -n aap
+```
+
+All pods must show `Running` status. The expected pods and their container counts are:
+
+| Pod | Containers | Expected Status |
+|---|---|---|
+| `aap-postgres-15-0` | 1/1 | Running |
+| `aap-redis-0` | 1/1 | Running |
+| `aap-gateway-*` | 2/2 | Running |
+| `aap-controller-task-*` | 4/4 | Running |
+| `aap-controller-web-*` | 3/3 | Running |
+| `aap-hub-api-*` | 1/1 | Running |
+| `aap-hub-content-*` (×2) | 1/1 | Running |
+| `aap-hub-web-*` | 1/1 | Running |
+| `aap-hub-worker-*` | 1/1 | Running |
+| `aap-hub-redis-*` | 1/1 | Running |
+| `aap-eda-api-*` | 3/3 | Running |
+| `aap-eda-activation-worker-*` (×2) | 1/1 | Running |
+| `aap-eda-default-worker-*` (×2) | 1/1 | Running |
+| `aap-eda-scheduler-*` (×2) | 1/1 | Running |
+| `aap-eda-event-stream-*` | 2/2 | Running |
+
+**Verify the AAP CR shows a successful reconciliation:**
+
+```bash
+oc get ansibleautomationplatform aap -n aap \
+  -o jsonpath='{.status.conditions}' | python3 -m json.tool
+```
+
+Look for `"type": "Successful"` with `"status": "True"`.
+
+**Verify the deployed versions match:**
+
+```bash
+# Platform version (expected: 2.5.20250115)
+oc get ansibleautomationplatform aap -n aap -o jsonpath='{.status.version}'; echo
+
+# Automation Controller version (expected: 4.6.7)
+oc get automationcontroller aap-controller -n aap -o jsonpath='{.status.version}'; echo
+```
+
+**Verify routes are created:**
+
+```bash
+oc get routes -n aap
+```
+
+Four routes are expected:
+
+| Route | URL Pattern |
+|---|---|
+| Gateway (main entry point) | `https://aap-aap.apps.<cluster-domain>` |
+| Automation Controller | `https://aap-controller-aap.apps.<cluster-domain>` |
+| Automation Hub | `https://aap-hub-aap.apps.<cluster-domain>` |
+| Event-Driven Ansible | `https://aap-eda-aap.apps.<cluster-domain>` |
+
+### Step 7 — Retrieve Admin Credentials
+
+The operator auto-generates admin passwords and stores them in secrets within the `aap` namespace. Retrieve them as follows:
+
+```bash
+# Gateway / Platform admin password
+oc get secret aap-admin-password -n aap \
+  -o jsonpath='{.data.password}' | base64 -d; echo
+
+# Automation Controller admin password
+oc get secret aap-controller-admin-password -n aap \
+  -o jsonpath='{.data.password}' | base64 -d; echo
+
+# Automation Hub admin password
+oc get secret aap-hub-admin-password -n aap \
+  -o jsonpath='{.data.password}' | base64 -d; echo
+
+# EDA admin password
+oc get secret aap-eda-admin-password -n aap \
+  -o jsonpath='{.data.password}' | base64 -d; echo
+```
+
+The default admin username for all components is `admin`.
+
+Log in to the Gateway URL (`https://aap-aap.apps.<cluster-domain>`) with username `admin` and the Gateway admin password to confirm AAP is fully operational before proceeding to the next section.
 
 ---
 
