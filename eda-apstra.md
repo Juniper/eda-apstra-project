@@ -85,9 +85,8 @@ The following operators must be installed and configured:
 See https://docs.redhat.com/en/documentation/openshift_container_platform/4.11/html/installing/installing-on-baremetal for information on how to install an OpenShift Cluster on bare metal hosts.
 
 **Network Infrastructure:**
-- Leaf Switches: Minimum of two Juniper QFX5120 or QFX5130 devices
-- Spine Switches: Minimum of one Juniper QFX5210 or QFX5220 device
-- Apstra Management: One host with external connectivity to switch management network
+- Leaf Switches: Any Juniper Apstra supported QFX switch
+- Spine Switches: Any Juniper Apstra supported QFX switch
 
 **Docker Registry:**
 - Container registry accessible from the management node
