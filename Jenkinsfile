@@ -10,22 +10,9 @@ pipeline {
     parameters {
         string(name: 'apstraeeimage', defaultValue: '', description: 'apstra ee image')
         string(name: 'apstradeimage', defaultValue: '', description: 'apstra de image')
-        string(name: 'branch',        defaultValue: 'main', description: 'branch name')
     }
 
     stages {
-        stage('Checkout') {
-            steps {
-                script {
-                    checkout([
-                        $class: 'GitSCM',
-                        branches: [[name: params.branch]],
-                        userRemoteConfigs: [[url: 'https://github.com/cgadiparthijuniper/eda-apstra-project.git']]
-                    ])
-                }
-            }
-        }
-
         stage('Configure') {
             steps {
                 script {
