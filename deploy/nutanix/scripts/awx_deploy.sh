@@ -206,7 +206,8 @@ install_awx_operator() {
             --namespace $AWX_NAMESPACE \
             --create-namespace \
             --wait \
-            --timeout=10m
+            --timeout=10m \
+            < /dev/null
     fi
     
     # Wait for operator to be ready with robust checking

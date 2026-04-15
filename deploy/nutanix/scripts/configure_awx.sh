@@ -13,13 +13,49 @@ REPO_BRANCH="nutanix"
 WORK_DIR="/tmp/awx-config"
 ROLE_NAME="apstra-ntx-awx-configure"
 
+# Apstra version → EE image mapping
+#   Apstra 6.0 → apstra-ee:1.0.6  (EE 1.0.6 supports Apstra 6.0 and 6.1)
+#   Apstra 6.1 → apstra-ee:1.0.6
+EE_REGISTRY="s-artifactory.juniper.net/atom-docker/ee"
+
 echo "=== Complete AWX Configuration Script ==="
 echo "This script will:"
-echo "1. Configure Kubernetes RBAC"
-echo "2. Clone the repository and role"
-echo "3. Prompt for configuration values"
-echo "4. Configure AWX automatically"
+echo "1. Select Apstra version"
+echo "2. Configure Kubernetes RBAC"
+echo "3. Clone the repository and role"
+echo "4. Prompt for configuration values"
+echo "5. Configure AWX automatically"
 echo
+
+# Function to select Apstra version and derive EE image default
+select_apstra_version() {
+    echo
+    echo "=== Apstra Version Selection ==="
+    echo "Select the Apstra version you are running:"
+    echo "  1. Apstra 6.0  →  EE image apstra-ee:1.0.6"
+    echo "  2. Apstra 6.1  →  EE image apstra-ee:1.0.6"
+    echo
+    read -p "Enter your choice (1 or 2): " APSTRA_VER_CHOICE
+
+    case $APSTRA_VER_CHOICE in
+        1)
+            APSTRA_VERSION="6.0"
+            EE_IMAGE_TAG="1.0.6"
+            ;;
+        2)
+            APSTRA_VERSION="6.1"
+            EE_IMAGE_TAG="1.0.6"
+            ;;
+        *)
+            echo "ERROR: Invalid choice. Please run the script again."
+            exit 1
+            ;;
+    esac
+
+    EE_IMAGE_DEFAULT="${EE_REGISTRY}/apstra-ee:${EE_IMAGE_TAG}"
+    echo "✓ Apstra version : $APSTRA_VERSION"
+    echo "✓ EE image default: $EE_IMAGE_DEFAULT"
+}
 
 # Function to check if kubectl is available
 check_kubectl() {
@@ -191,8 +227,8 @@ prompt_for_configuration() {
     # Execution Environment
     echo
     echo "Execution Environment:"
-    read -p "Execution Environment Image URL [s-artifactory.juniper.net/atom-docker/ee/apstra-ee:1.0.6]: " EE_IMAGE_URL
-    EE_IMAGE_URL=${EE_IMAGE_URL:-s-artifactory.juniper.net/atom-docker/ee/apstra-ee:1.0.6}
+    read -p "Execution Environment Image URL [$EE_IMAGE_DEFAULT]: " EE_IMAGE_URL
+    EE_IMAGE_URL=${EE_IMAGE_URL:-$EE_IMAGE_DEFAULT}
     
     echo
     echo "✓ Configuration collected"
@@ -274,7 +310,8 @@ display_final_summary() {
 # Main execution
 main() {
     echo "Starting complete AWX configuration..."
-    
+
+    select_apstra_version
     check_kubectl
     get_awx_details
     create_kubernetes_rbac

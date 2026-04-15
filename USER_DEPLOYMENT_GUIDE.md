@@ -59,6 +59,11 @@ Before starting the deployment, ensure you have the following components install
 - ✅ **Storage**: Persistent volume support (local-path, NFS, or other)
 - ✅ **Helm**: v3.0+ installed
 - ✅ **Resources**: Minimum 4 CPU cores, 8GB RAM, 50GB storage
+- ✅ **CPU Architecture**: x86-64-v2 or newer — required by AWX's PostgreSQL 15 container.
+  Verify with: `grep -m1 flags /proc/cpuinfo | tr ' ' '\n' | grep -E 'sse4_1|sse4_2|ssse3|popcnt'` — all four must appear.
+  > ⚠️ **QEMU/KVM VMs with CPU model `qemu64` or `QEMU Virtual CPU v2.5+` will fail** at the PostgreSQL
+  > pod start-up with `Fatal glibc error: CPU does not support x86-64-v2`.
+  > Fix in your hypervisor: set CPU model to **`host`** (pass-through) or at minimum **`Skylake-Client`** before deploying.
 
 **Option B: No Kubernetes (We'll install it for you)**
 - ✅ **Linux Server**: Ubuntu 20.04+, CentOS 8+, or RHEL 8+
@@ -66,6 +71,7 @@ Before starting the deployment, ensure you have the following components install
 - ✅ **Root/Sudo Access**: Required for Kubernetes installation
 - ✅ **Python**: 3.10+ (script will install if missing)
 - ✅ **Internet Access**: Required to download Kubernetes components
+- ✅ **CPU Architecture**: x86-64-v2 or newer (same requirement as Option A above)
 
 ### 2. Network Connectivity Requirements
 
@@ -86,7 +92,7 @@ AWX ←→ Apstra Server (port 443)
 - ✅ **Git**: For cloning repositories
 - ✅ **kubectl**: Kubernetes command-line tool (configured)
 - ✅ **Helm**: Package manager for Kubernetes v3.0+
-- ✅ **Docker**: (Optional) If deploying service as Docker container
+- ✅ **Docker**: Required to load the Nutanix plugin image. Install with `sudo apt-get install -y docker.io` then add your user to the docker group: `sudo usermod -aG docker $USER` (re-login required)
 - ✅ **Bash**: Shell environment for running scripts
 
 **For New Kubernetes Installation:**
@@ -493,16 +499,20 @@ chmod +x configure_awx.sh
 
 The script will prompt you for:
 
-1. **Apstra Configuration:**
+1. **Apstra Version** (new — selects the correct Execution Environment image):
+   - `1` → Apstra 6.0  (EE image: `apstra-ee:1.0.6`)
+   - `2` → Apstra 6.1  (EE image: `apstra-ee:1.0.6`)
+
+2. **Apstra Configuration:**
    - Apstra server URL (e.g., `https://10.84.106.91`)
    - Username (admin or your Apstra user)
    - Password
 
-2. **Kubernetes Configuration:**
+3. **Kubernetes Configuration:**
    - Kubernetes API server URL (auto-detected)
    - Cluster configuration (auto-generated)
 
-3. **Project Configuration:**
+4. **Project Configuration:**
    - Repository URL (defaults to this project)
    - Branch (defaults to 'nutanix')
 
@@ -535,11 +545,104 @@ After configuration:
 # - Inventories tab shows "Apstra Inventory"
 ```
 
-### Step 4: Deploy Nutanix Event Notification Service
+### Step 4: Download and Load the Nutanix Plugin Image
+
+Before deploying the Nutanix Event Notification Service you must obtain the official container image from Juniper and make it available to Docker / the Kubernetes node. **The image is not pulled from a public registry — it must be loaded manually.**
+
+#### 4.0 Identify Your Plugin Version
+
+Choose the plugin package that matches your Apstra server version:
+
+| Apstra Version | Plugin Package | Image Tag | ~Size |
+|---|---|---|---|
+| **6.0** | `juniper-nutanix-plugin-6.0.0.tgz` | `event-notification-service:6.0.0` | ~63 MB |
+| **6.1** | `juniper-nutanix-plugin-6.1.0.tgz` | `event-notification-service:6.1.0` | ~63 MB |
+
+All commands below show `<PLUGIN_VERSION>` as a placeholder — substitute `6.0.0` or `6.1.0` according to the table above.
+
+#### 4.1 Download the Plugin Package
+
+1. Open a browser and go to:  
+   **https://support.juniper.net/support/downloads/?p=apstra**
+2. Sign in with your Juniper support account.
+3. Under **"Nutanix"** (or **"Juniper Nutanix Plugin"**), locate the release that matches your Apstra version:
+   - Apstra **6.0** → **Juniper Nutanix Plugin 6.0.0**
+   - Apstra **6.1** → **Juniper Nutanix Plugin 6.1.0** (released 08 Apr 2026, ~63 MB)
+4. Download the `.tgz` archive (e.g. `juniper-nutanix-plugin-6.1.0.tgz`).
+5. Download the associated **Checksums** file and verify integrity:
+
+```bash
+# Replace <PLUGIN_VERSION> with 6.0.0 or 6.1.0
+sha256sum juniper-nutanix-plugin-<PLUGIN_VERSION>.tgz
+# Compare output against the checksum listed on the download page
+```
+
+#### 4.2 Load the Image into Docker
+
+```bash
+# Replace <PLUGIN_VERSION> with your version (6.0.0 or 6.1.0)
+docker load -i juniper-nutanix-plugin-<PLUGIN_VERSION>.tgz
+```
+
+Confirm the image was loaded and note the tag printed by Docker:
+
+```bash
+docker images | grep event-notification-service
+# Expected output:
+# event-notification-service   6.0.0   <image-id>   ...   (for Apstra 6.0)
+# event-notification-service   6.1.0   <image-id>   ...   (for Apstra 6.1)
+```
+
+> **Note:** If the loaded tag differs from `event-notification-service:<PLUGIN_VERSION>`, re-tag it before proceeding:
+> ```bash
+> docker tag <loaded-name>:<loaded-tag> event-notification-service:<PLUGIN_VERSION>
+> ```
+
+#### 4.3 Make the Image Available on the Kubernetes Node (Kubernetes Deployment Only)
+
+Kubernetes uses `containerd` as its container runtime (installed by `k8s_deploy.sh`). You must import the image directly into `containerd`'s `k8s.io` namespace — simply loading it into Docker is **not** sufficient for Kubernetes pods to find it.
+
+**Option A — Import the tgz directly into containerd (recommended):**
+
+```bash
+# Replace <PLUGIN_VERSION> with 6.0.0 or 6.1.0
+sudo ctr -n k8s.io images import juniper-nutanix-plugin-<PLUGIN_VERSION>.tgz
+```
+
+Verify the image is visible to containerd:
+
+```bash
+sudo ctr -n k8s.io images ls | grep event-notification-service
+```
+
+**Option B — Transfer from Docker daemon to containerd:**
+
+```bash
+# Replace <PLUGIN_VERSION> with 6.0.0 or 6.1.0
+docker save event-notification-service:<PLUGIN_VERSION> | sudo ctr -n k8s.io images import -
+```
+
+#### 4.4 Verify the Image is Ready
+
+```bash
+# For Docker deployments — replace <PLUGIN_VERSION> with 6.0.0 or 6.1.0
+docker inspect event-notification-service:<PLUGIN_VERSION> --format '{{.Id}}' | head -c 12
+
+# For Kubernetes deployments — confirm containerd can see it
+sudo crictl images | grep event-notification-service
+# or
+sudo ctr -n k8s.io images ls | grep event-notification-service
+```
+
+Once the image is available, proceed to Step 5.
+
+---
+
+### Step 5: Deploy Nutanix Event Notification Service
 
 Now deploy the service that monitors Nutanix infrastructure and triggers AWX jobs.
 
-#### 4.1 Run Nutanix Service Deployment Script
+#### 5.1 Run Nutanix Service Deployment Script
 
 ```bash
 # Ensure you're in the scripts directory
@@ -548,7 +651,9 @@ chmod +x deploy_nutanix_service.sh
 ./deploy_nutanix_service.sh
 ```
 
-#### 4.2 Deployment Options
+The script will first ask which Apstra version you are running and will select the correct plugin image (`event-notification-service:6.0.0` or `event-notification-service:6.1.0`) automatically for the rest of the deployment.
+
+#### 5.2 Deployment Options
 
 The script will prompt you to choose:
 
@@ -563,7 +668,7 @@ The script will prompt you to choose:
 - Uses environment file for configuration
 - Simpler for development/testing
 
-#### 4.3 Configuration Input
+#### 5.3 Configuration Input
 
 The script will automatically detect AWX configuration and prompt for:
 
@@ -583,7 +688,7 @@ The script will automatically detect AWX configuration and prompt for:
 - Username: admin
 - Password: Extracted from AWX secret
 
-#### 4.4 Monitor Deployment
+#### 5.4 Monitor Deployment
 
 **For Kubernetes Deployment:**
 ```bash
@@ -614,9 +719,9 @@ docker exec nutanix-event-service env | grep NUTANIX
 
 ## Verification and Testing
 
-### Step 5: Verify End-to-End Functionality
+### Step 6: Verify End-to-End Functionality
 
-#### 5.1 Check Service Startup
+#### 6.1 Check Service Startup
 
 Look for these messages in the service logs:
 
@@ -629,7 +734,7 @@ Look for these messages in the service logs:
 🔍 Watching SUBNETS & VMS & VIRTUAL SWITCHES for: CREATION | MODIFICATION | DELETION
 ```
 
-#### 5.2 Test Infrastructure Event Detection
+#### 6.2 Test Infrastructure Event Detection
 
 **Create a test subnet in Nutanix:**
 
@@ -652,14 +757,14 @@ Look for these messages in the service logs:
    Job URL: http://x.x.x.x:xxxxx/#/jobs/X
 ```
 
-#### 5.3 Verify AWX Job Execution
+#### 6.3 Verify AWX Job Execution
 
 1. Login to AWX web interface
 2. Go to Jobs tab
 3. Verify that jobs are being triggered when infrastructure changes occur
 4. Check job output for successful execution
 
-### Step 6: Troubleshooting
+### Step 7: Troubleshooting
 
 #### Kubernetes Installation Issues
 
@@ -709,6 +814,24 @@ kubectl logs -n kube-system <pod-name>
 ```
 
 #### Service-Specific Issues
+
+**0. Nutanix Plugin Image Not Found:**
+```bash
+# deploy_nutanix_service.sh will error with, e.g.:
+# "Image 'event-notification-service:6.1.0' not found in local Docker daemon."
+
+# Fix: download and load the correct image for your Apstra version (see Step 4):
+#   Apstra 6.0 → juniper-nutanix-plugin-6.0.0.tgz
+#   Apstra 6.1 → juniper-nutanix-plugin-6.1.0.tgz
+
+# Load into Docker (replace <PLUGIN_VERSION> with 6.0.0 or 6.1.0):
+docker load -i juniper-nutanix-plugin-<PLUGIN_VERSION>.tgz
+docker images | grep event-notification-service
+
+# For Kubernetes node, also import into containerd:
+sudo ctr -n k8s.io images import juniper-nutanix-plugin-<PLUGIN_VERSION>.tgz
+sudo ctr -n k8s.io images ls | grep event-notification-service
+```
 
 **1. Service Cannot Connect to Nutanix:**
 ```bash

@@ -46,11 +46,14 @@ print_question() {
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FILES_DIR="$(dirname "$SCRIPT_DIR")/files"
 
-# Default values
-DEFAULT_IMAGE="s-artifactory.juniper.net/atom-docker/nutanix/event-notification-service:v15"
+# Default port/namespace values
 DEFAULT_NUTANIX_PORT="9440"
 DEFAULT_AWX_PORT="80"
 DEFAULT_NAMESPACE="default"
+
+# Apstra version → Juniper Nutanix Plugin version mapping
+#   Apstra 6.0  →  Plugin 6.0.0  →  event-notification-service:6.0.0
+#   Apstra 6.1  →  Plugin 6.1.0  →  event-notification-service:6.1.0
 
 print_header "Nutanix Event Notification Service Deployment"
 
@@ -61,21 +64,85 @@ echo "AWX/Ansible Tower configuration will be automatically detected from the"
 echo "running AWX instance in the 'aap' namespace."
 echo ""
 
+# ── Apstra version selection ──────────────────────────────────────────────────
+print_question "Which Apstra version are you running?"
+echo "  1. Apstra 6.0  →  Juniper Nutanix Plugin 6.0.0"
+echo "  2. Apstra 6.1  →  Juniper Nutanix Plugin 6.1.0"
+echo ""
+read -p "Enter your choice (1 or 2): " APSTRA_VER_CHOICE
+
+case $APSTRA_VER_CHOICE in
+    1)
+        APSTRA_VERSION="6.0"
+        PLUGIN_VERSION="6.0.0"
+        ;;
+    2)
+        APSTRA_VERSION="6.1"
+        PLUGIN_VERSION="6.1.0"
+        ;;
+    *)
+        print_error "Invalid choice. Please run the script again."
+        exit 1
+        ;;
+esac
+
+SELECTED_IMAGE="event-notification-service:${PLUGIN_VERSION}"
+PLUGIN_TGZ="juniper-nutanix-plugin-${PLUGIN_VERSION}.tgz"
+print_status "Apstra version : $APSTRA_VERSION"
+print_status "Plugin image   : $SELECTED_IMAGE"
+echo ""
+
+# ── Deployment method selection ──────────────────────────────────────────────
+print_question "Choose deployment method:"
+echo "  1. Docker Container (Standalone)"
+echo "  2. Kubernetes Pods (Cluster)"
+echo ""
+read -p "Enter your choice (1 or 2): " DEPLOY_METHOD
+
+case $DEPLOY_METHOD in
+    1)
+        DEPLOYMENT_TYPE="docker"
+        print_status "Selected: Docker Container deployment"
+        ;;
+    2)
+        DEPLOYMENT_TYPE="kubernetes"
+        print_status "Selected: Kubernetes Pods deployment"
+        ;;
+    *)
+        print_error "Invalid choice. Please run the script again."
+        exit 1
+        ;;
+esac
+echo ""
+
 # Check prerequisites
 print_status "Checking prerequisites..."
 
-# Check if kubectl is available for AWX password extraction
+# kubectl is always required (for AWX password + K8s deployment)
 if ! command -v kubectl &> /dev/null; then
     print_error "kubectl is not installed or not in PATH"
-    print_error "kubectl is required to extract AWX password from cluster"
     exit 1
 fi
-
-# Check if we can access the cluster
 if ! kubectl cluster-info &> /dev/null; then
     print_error "Cannot connect to Kubernetes cluster"
     print_error "Please ensure kubectl is properly configured"
     exit 1
+fi
+
+# Docker is required only for Docker deployment path
+if [ "$DEPLOYMENT_TYPE" == "docker" ]; then
+    if ! command -v docker &> /dev/null; then
+        print_error "Docker is not installed or not in PATH"
+        print_error "Install with: sudo apt-get install -y docker.io"
+        exit 1
+    fi
+    if ! docker ps &> /dev/null; then
+        print_error "Cannot run Docker commands. Please check Docker daemon and permissions."
+        print_status "If Docker was just installed, add your user to the docker group and re-login:"
+        print_status "  sudo usermod -aG docker \$USER  # then log out and back in"
+        print_status "Or run this script with: sg docker ./deploy_nutanix_service.sh"
+        exit 1
+    fi
 fi
 
 print_success "Prerequisites check passed"
@@ -97,6 +164,36 @@ if [ -z "$AWX_ADMIN_PASSWORD" ]; then
 fi
 
 print_success "AWX admin password extracted successfully"
+
+# ── Image availability check (deployment-type aware) ─────────────────────────
+print_status "Checking Nutanix plugin image availability ($SELECTED_IMAGE)..."
+
+if [ "$DEPLOYMENT_TYPE" == "docker" ]; then
+    # Docker deployment: image must be in the Docker daemon
+    if ! docker image inspect "$SELECTED_IMAGE" &> /dev/null; then
+        print_error "Image '$SELECTED_IMAGE' not found in Docker daemon."
+        print_error ""
+        print_error "Download and load the image first:"
+        print_error "  1. https://support.juniper.net/support/downloads/?p=apstra"
+        print_error "     → Juniper Nutanix Plugin ${PLUGIN_VERSION}"
+        print_error "  2. docker load -i ${PLUGIN_TGZ}"
+        print_error "  3. Re-run this script."
+        exit 1
+    fi
+else
+    # Kubernetes deployment: image must be in containerd (k8s.io namespace)
+    if ! sudo ctr -n k8s.io images ls 2>/dev/null | grep -q "event-notification-service:${PLUGIN_VERSION}"; then
+        print_error "Image '$SELECTED_IMAGE' not found in containerd (k8s.io namespace)."
+        print_error ""
+        print_error "Download and import the image first:"
+        print_error "  1. https://support.juniper.net/support/downloads/?p=apstra"
+        print_error "     → Juniper Nutanix Plugin ${PLUGIN_VERSION}"
+        print_error "  2. sudo ctr -n k8s.io images import ${PLUGIN_TGZ}"
+        print_error "  3. Re-run this script."
+        exit 1
+    fi
+fi
+print_success "Nutanix plugin image found: $SELECTED_IMAGE"
 
 # Extract AWX service configuration from cluster
 print_status "Extracting AWX service configuration..."
@@ -129,29 +226,6 @@ AWX_USERNAME="admin"
 
 print_success "AWX configuration auto-detected"
 print_status "AWX accessible at: $AWX_HOST:$AWX_PORT"
-
-# Get deployment method choice
-echo ""
-print_question "Choose deployment method:"
-echo "1. Docker Container (Standalone)"
-echo "2. Kubernetes Pods (Cluster)"
-echo ""
-read -p "Enter your choice (1 or 2): " DEPLOY_METHOD
-
-case $DEPLOY_METHOD in
-    1)
-        DEPLOYMENT_TYPE="docker"
-        print_status "Selected: Docker Container deployment"
-        ;;
-    2)
-        DEPLOYMENT_TYPE="kubernetes"
-        print_status "Selected: Kubernetes Pods deployment"
-        ;;
-    *)
-        print_error "Invalid choice. Please run the script again."
-        exit 1
-        ;;
-esac
 
 echo ""
 print_header "Configuration Input"
@@ -239,21 +313,6 @@ EOF
 
     print_success "Environment file created: $ENV_FILE"
     
-    # Check if Docker is available
-    if ! command -v docker &> /dev/null; then
-        print_error "Docker is not installed or not in PATH"
-        exit 1
-    fi
-    
-    # Check if user can run docker commands
-    if ! docker ps &> /dev/null; then
-        print_error "Cannot run Docker commands. Please check Docker daemon and permissions."
-        print_status "You may need to add your user to the docker group:"
-        print_status "  sudo usermod -aG docker \$USER"
-        print_status "  newgrp docker"
-        exit 1
-    fi
-    
     print_status "Deploying Docker container..."
     
     # Stop existing container if running
@@ -268,7 +327,7 @@ EOF
         --name nutanix-event-service \
         --env-file "$ENV_FILE" \
         --restart unless-stopped \
-        $DEFAULT_IMAGE
+        $SELECTED_IMAGE
     
     if [ $? -eq 0 ]; then
         print_success "Docker container deployed successfully!"
@@ -324,6 +383,8 @@ else
     # Prepare Deployment
     cp "$FILES_DIR/deployment.yaml" "$TEMP_DIR/"
     sed -i "s/namespace: default/namespace: $K8S_NAMESPACE/" "$TEMP_DIR/deployment.yaml"
+    # Patch image tag for selected Apstra version
+    sed -i "s|image: event-notification-service:.*|image: $SELECTED_IMAGE|" "$TEMP_DIR/deployment.yaml"
     
     # Copy Service if exists
     if [ -f "$FILES_DIR/service.yaml" ]; then
