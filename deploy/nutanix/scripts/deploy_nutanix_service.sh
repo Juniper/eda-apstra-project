@@ -87,6 +87,10 @@ case $APSTRA_VER_CHOICE in
 esac
 
 SELECTED_IMAGE="event-notification-service:${PLUGIN_VERSION}"
+# The image inside the tgz may carry a different name/tag pattern
+# (e.g. apstra-nutanix-event-service:6.1.0-2.0.0-x86_64). The load helpers
+# below search for any apstra-nutanix OR event-notification-service tag and
+# re-tag it to SELECTED_IMAGE so the deployment manifests stay consistent.
 PLUGIN_TGZ="juniper-nutanix-plugin-${PLUGIN_VERSION}.tgz"
 print_status "Apstra version : $APSTRA_VERSION"
 print_status "Plugin image   : $SELECTED_IMAGE"
@@ -165,35 +169,96 @@ fi
 
 print_success "AWX admin password extracted successfully"
 
-# ── Image availability check (deployment-type aware) ─────────────────────────
+# ── Image availability check + auto-load ─────────────────────────────────────
+# Helper: prompt for tgz path, validate, return in $PLUGIN_TGZ_PATH
+_prompt_for_plugin_tgz() {
+    echo ""
+    print_status "The Nutanix plugin image needs to be downloaded from the Juniper Support portal:"
+    print_status "  URL  : https://support.juniper.net/support/downloads/?p=apstra"
+    print_status "  Under: 'Juniper Nutanix Plugin'"
+    print_status "  File : juniper-nutanix-plugin-${PLUGIN_VERSION}.tgz  (~63 MB)"
+    echo ""
+    read -p "$(echo -e "${CYAN}[INPUT]${NC} Enter full path to juniper-nutanix-plugin-${PLUGIN_VERSION}.tgz: ")" PLUGIN_TGZ_PATH
+    if [[ -z "$PLUGIN_TGZ_PATH" ]]; then
+        print_error "No path provided."
+        exit 1
+    fi
+    if [[ ! -f "$PLUGIN_TGZ_PATH" ]]; then
+        print_error "File not found: $PLUGIN_TGZ_PATH"
+        exit 1
+    fi
+}
+
+# Helper: load tgz into Docker daemon and (re)tag to SELECTED_IMAGE
+_load_image_docker() {
+    print_status "Loading image into Docker daemon..."
+    if file "$PLUGIN_TGZ_PATH" | grep -qi "gzip\|compressed"; then
+        zcat "$PLUGIN_TGZ_PATH" | docker load
+    else
+        docker load -i "$PLUGIN_TGZ_PATH"
+    fi
+    # Re-tag to the expected name if loaded under a different tag
+    if ! docker image inspect "$SELECTED_IMAGE" &>/dev/null; then
+        local loaded_tag
+        loaded_tag=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep "event-notification-service" | head -1)
+        if [[ -n "$loaded_tag" && "$loaded_tag" != "$SELECTED_IMAGE" ]]; then
+            docker tag "$loaded_tag" "$SELECTED_IMAGE"
+            print_success "Re-tagged $loaded_tag → $SELECTED_IMAGE"
+        fi
+    fi
+}
+
+# Helper: load tgz into containerd k8s.io namespace and (re)tag to SELECTED_IMAGE
+_load_image_containerd() {
+    print_status "Loading image into containerd (k8s.io namespace)..."
+    if file "$PLUGIN_TGZ_PATH" | grep -qi "gzip\|compressed"; then
+        zcat "$PLUGIN_TGZ_PATH" | sudo ctr -n k8s.io images import -
+    else
+        sudo ctr -n k8s.io images import "$PLUGIN_TGZ_PATH"
+    fi
+    # Re-tag to the canonical short name. The tgz may contain either:
+    #   event-notification-service:X.Y.Z
+    #   apstra-nutanix-event-service:X.Y.Z-...
+    if ! sudo ctr -n k8s.io images ls 2>/dev/null | grep -q "^event-notification-service:${PLUGIN_VERSION}"; then
+        local loaded_tag
+        loaded_tag=$(sudo ctr -n k8s.io images ls 2>/dev/null \
+            | grep -E "event-notification-service|apstra-nutanix" \
+            | awk '{print $1}' | head -1)
+        if [[ -n "$loaded_tag" ]]; then
+            sudo ctr -n k8s.io images tag "$loaded_tag" "$SELECTED_IMAGE"
+            print_success "Re-tagged $loaded_tag → $SELECTED_IMAGE"
+        fi
+    fi
+    # Kubelet resolves bare image names to docker.io/library/<name> internally.
+    # Tag with the full docker.io/library prefix so IfNotPresent lookup succeeds.
+    sudo ctr -n k8s.io images tag "$SELECTED_IMAGE" "docker.io/library/${SELECTED_IMAGE}" 2>/dev/null || true
+    print_success "Also tagged as docker.io/library/${SELECTED_IMAGE} (required by kubelet)"
+}
+
 print_status "Checking Nutanix plugin image availability ($SELECTED_IMAGE)..."
 
 if [ "$DEPLOYMENT_TYPE" == "docker" ]; then
-    # Docker deployment: image must be in the Docker daemon
-    if ! docker image inspect "$SELECTED_IMAGE" &> /dev/null; then
-        print_error "Image '$SELECTED_IMAGE' not found in Docker daemon."
-        print_error ""
-        print_error "Download and load the image first:"
-        print_error "  1. https://support.juniper.net/support/downloads/?p=apstra"
-        print_error "     → Juniper Nutanix Plugin ${PLUGIN_VERSION}"
-        print_error "  2. docker load -i ${PLUGIN_TGZ}"
-        print_error "  3. Re-run this script."
-        exit 1
+    if ! docker image inspect "$SELECTED_IMAGE" &>/dev/null; then
+        print_warning "Image '$SELECTED_IMAGE' not found in Docker daemon."
+        _prompt_for_plugin_tgz
+        _load_image_docker
+        if ! docker image inspect "$SELECTED_IMAGE" &>/dev/null; then
+            print_error "Image still not found after load. Check the tgz file."
+            exit 1
+        fi
     fi
 else
-    # Kubernetes deployment: image must be in containerd (k8s.io namespace)
     if ! sudo ctr -n k8s.io images ls 2>/dev/null | grep -q "event-notification-service:${PLUGIN_VERSION}"; then
-        print_error "Image '$SELECTED_IMAGE' not found in containerd (k8s.io namespace)."
-        print_error ""
-        print_error "Download and import the image first:"
-        print_error "  1. https://support.juniper.net/support/downloads/?p=apstra"
-        print_error "     → Juniper Nutanix Plugin ${PLUGIN_VERSION}"
-        print_error "  2. sudo ctr -n k8s.io images import ${PLUGIN_TGZ}"
-        print_error "  3. Re-run this script."
-        exit 1
+        print_warning "Image '$SELECTED_IMAGE' not found in containerd."
+        _prompt_for_plugin_tgz
+        _load_image_containerd
+        if ! sudo ctr -n k8s.io images ls 2>/dev/null | grep -q "event-notification-service:${PLUGIN_VERSION}"; then
+            print_error "Image still not found after load. Check the tgz file."
+            exit 1
+        fi
     fi
 fi
-print_success "Nutanix plugin image found: $SELECTED_IMAGE"
+print_success "Nutanix plugin image ready: $SELECTED_IMAGE"
 
 # Extract AWX service configuration from cluster
 print_status "Extracting AWX service configuration..."

@@ -113,15 +113,61 @@ Prepare the following credentials:
 
 ---
 
-## Build the Execution Environment (EE)
+## Prepare the Execution Environment (EE) Image
 
-AWX requires an **Execution Environment** (EE) container image that bundles the Ansible collection and the Apstra SDK. The published image
-`apstra-ee:1.0.5` ships `aos-sdk 0.1.0` (Apstra 5.1). To work with **Apstra 6.1**, you must rebuild the image with `aos-sdk 6.1.0` and
-collection `1.0.6`.
+AWX requires an **Execution Environment** (EE) container image that bundles the Ansible collection and the Apstra SDK.
 
-> **Note:** You only need to do this once. After uploading the image to AWX, all job templates will use it automatically.
+> **Note:** You only need to do this once. `configure_awx.sh` automatically detects and loads the image.
 
-### EE Build Prerequisites
+### EE Compatibility Matrix
+
+| EE Image Tag | Collection | aos-sdk | Apstra Server |
+|---|---|---|---|
+| `apstra-ee:1.0.5` | 1.0.5 | 0.1.0 | 5.1.x |
+| `apstra-ee:1.0.6` | 1.0.6 | 6.1.0 | 6.0 / 6.1 |
+
+---
+
+### EE Path A: Download the Pre-Built Image (Recommended)
+
+**This is the standard path for most deployments.** Juniper publishes a pre-built
+`apstra-ee:1.0.6` image on the support portal.
+
+#### EE A.1 — Download the image archive
+
+1. Go to: **https://support.juniper.net/support/downloads/?p=apstra**
+2. Sign in with your Juniper Support account.
+3. Under **"Apstra Ansible Execution Environment"** locate the release matching your Apstra version:
+   - Apstra **6.0 / 6.1** → **Apstra Ansible Execution Environment 1.0.6**
+4. Download the `.tgz` archive (e.g. `apstra-ee-x86_64-1.0.6.image.tgz`, ~200 MB).
+5. Copy it to the Kubernetes node (this server).
+
+#### EE A.2 — Let `configure_awx.sh` load it (automatic)
+
+When you run `configure_awx.sh` in Step 3 below, the script will:
+- Check whether `apstra-ee:1.0.6` is already present in containerd
+- If not, ask you for the path to the `.tgz` file
+- Import it into containerd's `k8s.io` namespace automatically
+- Register it in AWX with `pull: missing` so no internet access is needed
+
+You do **not** need to run any `ctr` or `docker` commands manually.
+
+#### EE A.3 — Verify (optional pre-check)
+
+```bash
+# Confirm the image is visible to Kubernetes after configure_awx.sh loads it:
+sudo ctr -n k8s.io images ls | grep apstra-ee
+# Expected: apstra-ee:1.0.6   ...
+```
+
+---
+
+### EE Path B: Build the Image from Source (Advanced)
+
+Use this path only if you need to customise the image (e.g. add extra Python packages)
+or if the pre-built image is not available from the support portal.
+
+#### EE B Prerequisites
 
 | Requirement | Version |
 |---|---|
@@ -132,140 +178,57 @@ collection `1.0.6`.
 | Red Hat registry account | Required for base image — [register free at](https://access.redhat.com) |
 | Juniper Support account | Required to download the Apstra SDK |
 
----
-
-### EE Step 1: Clone the Apstra Ansible Collection
+#### EE B.1 — Clone the Apstra Ansible Collection
 
 ```bash
 git clone https://github.com/Juniper/apstra-ansible-collection.git
 cd apstra-ansible-collection
 ```
 
----
+#### EE B.2 — Download the Apstra SDK Wheel
 
-### EE Step 2: Download the Apstra SDK Wheel
+The Apstra SDK (`aos_sdk`) is **not** on PyPI — download it from the Juniper Support portal.
 
-The Apstra SDK (`aos_sdk`) is **not** on PyPI and is **not committed to this repository** — it must be downloaded from the Juniper Support portal and placed in `build/wheels/` **before** running any `make` targets.
-
-> ⚠️ **Critical — do this before `make pipenv` or `make image`:**  
-> If `build/wheels/` contains no SDK wheel, `make pipenv` automatically falls back to downloading
-> `aos_sdk-0.1.0` (Apstra 5.1 SDK). That older SDK is **not compatible** with Apstra 6.0 / 6.1
-> and will cause blueprint commit/unlock failures at runtime.
-
-**Steps:**
+> ⚠️ **Critical:** Place the wheel in `build/wheels/` **before** running `make pipenv`.
+> Without it, pip falls back to `aos_sdk-0.1.0` (Apstra 5.1), which is **incompatible** with 6.x.
 
 1. Go to: **https://support.juniper.net/support/downloads/?p=apstra**
 2. Under **"Application Tools"** locate **"Apstra Automation Python3 SDK"**.
-3. Download the `.tar.gz` archive (e.g. `apstra-automation-python3-sdk-6.1.0.tar.gz`).
-4. Extract the wheel file:
+3. Download `apstra-automation-python3-sdk-6.1.0.tar.gz` and extract the wheel:
 
    ```bash
    tar -xzf apstra-automation-python3-sdk-*.tar.gz
    find . -name "aos_sdk-*.whl"
-   ```
-
-5. Create the `build/wheels/` directory and place the wheel there:
-
-   ```bash
    mkdir -p apstra-ansible-collection/build/wheels/
    cp /path/to/aos_sdk-6.1.0-py3-none-any.whl apstra-ansible-collection/build/wheels/
    ```
 
-6. Verify it is in place:
-
-   ```bash
-   ls apstra-ansible-collection/build/wheels/
-   # Expected: aos_sdk-6.1.0-py3-none-any.whl
-   ```
-
-> **Offline / air-gapped:** If your Juniper SE has provided the wheel file directly, skip steps 1–4 and copy it straight to `build/wheels/`.
-
----
-
-### EE Step 3: Set Up the Python Environment
-
-> **Prerequisite:** The `aos_sdk-6.1.0-py3-none-any.whl` must already be in `build/wheels/` (Step 2 above).
-
-The `make pipenv` target detects the highest-versioned `aos_sdk-*.whl` in `build/wheels/`, updates `Pipfile` to reference it, and installs all dependencies:
+#### EE B.3 — Set Up Python Environment and Build
 
 ```bash
 cd apstra-ansible-collection
-make pipenv
+make pipenv    # installs deps, picks up aos_sdk-6.1.0-py3-none-any.whl automatically
+make build     # produces juniper-apstra-1.0.6.tar.gz
 ```
 
-This will:
-- Install `pipenv` and `pre-commit` if missing
-- Pick `aos_sdk-6.1.0-py3-none-any.whl` from `build/wheels/` automatically
-- Update `Pipfile` to reference that wheel
-- Install all Python dependencies
-
-Confirm the correct wheel was selected in the `make pipenv` output:
+Confirm the wheel was picked up:
 ```
 Using aos_sdk wheel: aos_sdk-6.1.0-py3-none-any.whl
 ```
-If you see `aos_sdk-0.1.0` here, the 6.1.0 wheel was not found — go back to Step 2.
 
----
-
-### EE Step 4: Build the Collection Tarball
-
-```bash
-make build
-```
-
-This runs `ansible-galaxy collection build` and produces `juniper-apstra-1.0.6.tar.gz`.
-
----
-
-### EE Step 5: Configure Red Hat Registry Credentials
-
-`ansible-builder` pulls the base image `registry.redhat.io/ansible-automation-platform-25/ee-minimal-rhel8:1.0`.
-Create a `.env` file in the repo root (it is git-ignored):
+#### EE B.4 — Configure Red Hat Registry and Build Image
 
 ```bash
 cat > .env << 'EOF'
 RH_USERNAME=your-redhat-username
 RH_PASSWORD=your-redhat-password
 EOF
+make image     # builds apstra-ee:1.0.6, exports apstra-ee-<platform>-1.0.6.image.tgz
 ```
 
-> **Tip:** If you already have a Red Hat service account token, use the token username/password from
-> **https://access.redhat.com/terms-based-registry/**.
+Build takes ~10–15 minutes. The output `.tgz` can then be used with **EE Path A** above.
 
-Optionally set `REGISTRY_URL` to push directly to Artifactory after the build:
-
-```bash
-echo "REGISTRY_URL=s-artifactory.juniper.net/atom-docker/ee" >> .env
-```
-
----
-
-### EE Step 6: Build the Image
-
-```bash
-# Loads .env automatically via pipenv
-make image
-```
-
-What this does:
-1. Copies `juniper-apstra-1.0.6.tar.gz` → `build/collections/juniper-apstra.tar.gz`
-2. Runs `build/build_image.sh` which calls `ansible-builder build -f build/ee-builder.yml`
-3. The builder:
-   - Pulls the RH base image (requires `RH_USERNAME` / `RH_PASSWORD`)
-   - Installs `aos_sdk-6.1.0` via the wheel copied into the image
-   - Installs the `juniper.apstra 1.0.6` collection
-   - Installs `kubernetes.core` and `community.general` collections
-4. Tags the resulting image `apstra-ee:1.0.6`
-5. Exports it as `apstra-ee-<platform>-1.0.6.image.tgz`
-6. If `REGISTRY_URL` is set — pushes `apstra-ee:1.0.6` to your registry
-
-**Build takes ~10–15 minutes** on first run (base image download + RPM installs).
-
-> **Note for customizers:** The RH base image does not have `pip` on `PATH`. Any custom `RUN` steps in `ee-builder.yml` that install Python packages must use `python3 -m pip install` instead of bare `pip install`.
-
----
-
-### EE Step 7: Verify the Built Image
+#### EE B.5 — Verify the Built Image
 
 ```bash
 docker run --rm apstra-ee:1.0.6 bash -c "
@@ -274,52 +237,13 @@ docker run --rm apstra-ee:1.0.6 bash -c "
 "
 ```
 
-Expected output:
-
+Expected:
 ```
 Name: aos-sdk
 Version: 6.1.0
 ...
-Collection      Version
---------------- -------
 juniper.apstra  1.0.6
 ```
-
----
-
-### EE Step 8: Upload the Image to AWX
-
-#### Option A — Push to a Registry and Configure AWX to Pull It
-
-```bash
-# Tag for your registry (if not done automatically by make image)
-docker tag apstra-ee:1.0.6 s-artifactory.juniper.net/atom-docker/ee/apstra-ee:1.0.6
-
-# Push
-docker push s-artifactory.juniper.net/atom-docker/ee/apstra-ee:1.0.6
-```
-
-In AWX: **Administration → Execution Environments → Add**
-- **Name:** `apstra-ee`
-- **Image:** `s-artifactory.juniper.net/atom-docker/ee/apstra-ee:1.0.6`
-- **Pull:** `Always`
-
-#### Option B — Import the Exported `.tgz` Directly into the Node
-
-```bash
-# Copy the tgz to the Kubernetes node and import
-scp apstra-ee-x86_64-1.0.6.image.tgz user@k8s-node:~
-ssh user@k8s-node "docker load -i ~/apstra-ee-x86_64-1.0.6.image.tgz"
-```
-
----
-
-### EE Compatibility Matrix
-
-| EE Image Tag | Collection | aos-sdk | Apstra Server |
-|---|---|---|---|
-| `apstra-ee:1.0.5` | 1.0.5 | 0.1.0 | 5.1.x |
-| `apstra-ee:1.0.6` | 1.0.6 | 6.1.0 | 6.0 / 6.1 |
 
 ---
 

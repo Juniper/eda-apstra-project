@@ -4,17 +4,15 @@
 ## It is best practice to use Ansible Vault to encrypt sensitive data such as passwords.
 
 # Kubernetes Configuration
-kubernetes_host: "https://10.84.128.57:6443"
+kubernetes_host: "https://10.87.2.82:6443"
 
 # AWX Configuration
-awx_host: "http://10.84.128.57:31743/"
+awx_host: "http://10.87.2.82:30749"
 awx_username: "admin"
-awx_password: ""
-execution_environment_image_url: "s-artifactory.juniper.net/atom-docker/ee/apstra-ee:1.0.6"
+awx_password: "PuFuQb7zbmDgZgt7uh12zTnTrNHVQjgO"
+execution_environment_image_url: "apstra-ee:1.0.6"
 
 # Apstra Variables
-apstra_api_url: "https://10.84.128.67/api"
+apstra_api_url: "https://10.87.2.80/api"
 apstra_username: "admin"
-apstra_password: ""
-
-
+apstra_password: "Apstramarvis@123"
