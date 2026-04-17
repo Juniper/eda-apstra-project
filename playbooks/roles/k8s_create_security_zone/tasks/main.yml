@@ -119,7 +119,7 @@
 
     - name: Debug - show all resource groups for blueprint
       debug:
-        msg: "{{ ansible_facts.apstra_facts.blueprints[register_bp.id.blueprint].resource_groups | dict2items | selectattr('value.resource_type', 'equalto', 'vni') | list }}"
+        msg: "{{ ansible_facts.apstra_facts.blueprints[register_bp.id.blueprint].resource_groups | selectattr('resource_type', 'equalto', 'vni') | list }}"
       when: vni_pool_name | length > 0
 
     - name: Find VNI resource group name for this security zone
@@ -127,10 +127,9 @@
         sz_vni_rg_name: >-
           {{
             ansible_facts.apstra_facts.blueprints[register_bp.id.blueprint].resource_groups
-            | dict2items
-            | selectattr('value.resource_type', 'equalto', 'vni')
-            | selectattr('key', 'search', sz.id.security_zone)
-            | map(attribute='key')
+            | selectattr('resource_type', 'equalto', 'vni')
+            | selectattr('name', 'search', sz.id.security_zone)
+            | map(attribute='name')
             | first
             | default('')
           }}
