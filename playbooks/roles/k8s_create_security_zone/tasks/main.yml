@@ -182,6 +182,11 @@
         msg: "{{ rg_response.json['items'] | selectattr('type', 'equalto', 'ip') | map(attribute='name') | list }}"
       when: loopback_pool_name | length > 0
 
+    - name: Debug - show ALL resource group names and types (unfiltered)
+      debug:
+        msg: "{{ rg_response.json['items'] | map(attribute='name') | list }}"
+      when: loopback_pool_name | length > 0
+
     - name: Find loopback IP pool ID by display_name
       ansible.builtin.set_fact:
         loopback_pool_id: >-
