@@ -90,64 +90,77 @@
         tags: "{{ sz_tags if sz_tags is not none else omit }}"
       register: sz
 
-    - name: Debug - print vni_pool_name and security zone ID
-      debug:
-        msg: "vni_pool_name='{{ vni_pool_name }}' sz_id='{{ sz.id.security_zone }}'"
+    - name: Gather VNI pools and blueprint resource groups from Apstra
+      juniper.apstra.apstra_facts:
+        id: "{{ register_bp.id }}"
+        auth_token: "{{ auth.token }}"
+        gather_network_facts:
+          - blueprints.resource_groups
+          - vni_pools
       when: vni_pool_name | length > 0
 
-    - name: Get all resource groups from blueprint
-      ansible.builtin.uri:
-        url: "{{ lookup('env', 'APSTRA_API_URL') }}/blueprints/{{ register_bp.id.blueprint }}/resource_groups"
-        method: GET
-        headers:
-          AuthToken: "{{ auth.token }}"
-        validate_certs: false
-        status_code: 200
-      register: rg_response
+    - name: Debug - show all VNI pools
+      debug:
+        msg: "{{ ansible_facts.apstra_facts.vni_pools | dict2items | map(attribute='value') | map(attribute='display_name') | list }}"
       when: vni_pool_name | length > 0
 
-    - name: Debug - show all VNI resource groups
+    - name: Find VNI pool ID by display_name
+      ansible.builtin.set_fact:
+        vni_pool_id: >-
+          {{
+            ansible_facts.apstra_facts.vni_pools
+            | dict2items
+            | selectattr('value.display_name', 'equalto', vni_pool_name)
+            | map(attribute='key')
+            | first
+            | default('')
+          }}
+      when: vni_pool_name | length > 0
+
+    - name: Debug - show all resource groups for blueprint
       debug:
-        msg: "{{ rg_response.json['items'] | selectattr('type', 'equalto', 'vni') | list }}"
+        msg: "{{ ansible_facts.apstra_facts.blueprints[register_bp.id.blueprint].resource_groups | dict2items | selectattr('value.resource_type', 'equalto', 'vni') | list }}"
       when: vni_pool_name | length > 0
 
     - name: Find VNI resource group name for this security zone
       ansible.builtin.set_fact:
         sz_vni_rg_name: >-
           {{
-            rg_response.json['items']
-            | selectattr('type', 'equalto', 'vni')
-            | selectattr('name', 'search', sz.id.security_zone)
-            | map(attribute='name')
+            ansible_facts.apstra_facts.blueprints[register_bp.id.blueprint].resource_groups
+            | dict2items
+            | selectattr('value.resource_type', 'equalto', 'vni')
+            | selectattr('key', 'search', sz.id.security_zone)
+            | map(attribute='key')
             | first
             | default('')
           }}
       when: vni_pool_name | length > 0
 
-    - name: Debug - print discovered VNI resource group name
+    - name: Debug - print vni_pool_id and resource group name
       debug:
-        msg: "Discovered VNI resource group: '{{ sz_vni_rg_name }}'"
+        msg: "vni_pool_name='{{ vni_pool_name }}' vni_pool_id='{{ vni_pool_id }}' sz_vni_rg_name='{{ sz_vni_rg_name }}'"
       when: vni_pool_name | length > 0
 
     - name: Assign VNI pool to security zone routing zone
-      juniper.apstra.resource_group:
-        id:
-          blueprint: "{{ register_bp.id.blueprint }}"
-          group_type: "vni"
-          group_name: "{{ sz_vni_rg_name }}"
+      ansible.builtin.uri:
+        url: "{{ lookup('env', 'APSTRA_API_URL') }}/blueprints/{{ register_bp.id.blueprint }}/resource_groups/vni/{{ sz_vni_rg_name }}"
+        method: PUT
+        headers:
+          AuthToken: "{{ auth.token }}"
+          Content-Type: "application/json"
+        body_format: json
         body:
           pool_ids:
-            - "{{ vni_pool_name }}"
-        auth_token: "{{ auth.token }}"
-        verify_certificates: false
-        state: present
-      when: vni_pool_name | length > 0 and sz_vni_rg_name | length > 0
+            - "{{ vni_pool_id }}"
+        validate_certs: false
+        status_code: [200, 202, 204]
+      when: vni_pool_name | length > 0 and vni_pool_id | length > 0 and sz_vni_rg_name | length > 0
       register: vni_assignment
 
     - name: Print VNI pool assignment result
       debug:
-        msg: "VNI pool '{{ vni_pool_name }}' assigned to resource group '{{ sz_vni_rg_name }}'"
-      when: vni_pool_name | length > 0 and sz_vni_rg_name | length > 0
+        msg: "VNI pool '{{ vni_pool_name }}' (id={{ vni_pool_id }}) assigned to resource group '{{ sz_vni_rg_name }}'"
+      when: vni_pool_name | length > 0 and vni_pool_id | length > 0 and sz_vni_rg_name | length > 0
 
     - name: If changes are made, print changed
       debug:
