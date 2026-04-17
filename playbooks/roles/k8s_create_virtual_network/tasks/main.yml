@@ -79,6 +79,10 @@
   set_fact:
     sz_label_value: "{{ (annotations['apstra.juniper.net/vnet'] | regex_search('\"vrfName\": \"([^\"]+)\"', '\\1') | first) | string }}"
 
+- name: Extract VNI pool name from vnet annotation if defined
+  ansible.builtin.set_fact:
+    vnet_vni_pool_name: "{{ vnet_data.vniPoolName | default('') }}"
+
 
 - name: Connect to Apstra
   juniper.apstra.authenticate:
@@ -234,6 +238,49 @@
       retries: 5
       delay: 10
       until: vn.failed == false
+
+    # ── Assign VNI pool to vxlan_vn_ids (available after VN creation) ──────
+    - name: Gather VNI pools for vxlan_vn_ids assignment
+      juniper.apstra.apstra_facts:
+        id: "{{ register_bp.id }}"
+        auth_token: "{{ auth.token }}"
+        gather_network_facts:
+          - vni_pools
+      when: vnet_vni_pool_name | length > 0
+
+    - name: Find VNI pool ID by display_name for vxlan_vn_ids
+      ansible.builtin.set_fact:
+        vnet_vni_pool_id: >-
+          {{
+            ansible_facts.apstra_facts.vni_pools
+            | dict2items
+            | selectattr('value.display_name', 'equalto', vnet_vni_pool_name)
+            | map(attribute='key')
+            | first
+            | default('')
+          }}
+      when: vnet_vni_pool_name | length > 0
+
+    - name: Assign VNI pool to vxlan_vn_ids resource group
+      ansible.builtin.uri:
+        url: "{{ lookup('env', 'APSTRA_API_URL') }}/blueprints/{{ register_bp.id.blueprint }}/resource_groups/vni/vxlan_vn_ids"
+        method: PUT
+        headers:
+          AuthToken: "{{ auth.token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          pool_ids:
+            - "{{ vnet_vni_pool_id }}"
+        validate_certs: false
+        status_code: [200, 202, 204]
+      when: vnet_vni_pool_name | length > 0 and vnet_vni_pool_id | length > 0
+      register: vxlan_vni_assignment
+
+    - name: Print vxlan_vn_ids assignment result
+      debug:
+        msg: "VNI pool '{{ vnet_vni_pool_name }}' (id={{ vnet_vni_pool_id }}) assigned to vxlan_vn_ids"
+      when: vnet_vni_pool_name | length > 0 and vnet_vni_pool_id | length > 0
   
     - name: Get the resource_groups
       juniper.apstra.apstra_facts:
