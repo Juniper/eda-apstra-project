@@ -139,7 +139,8 @@
 
     - name: Set VNI resource groups dynamically from API response
       ansible.builtin.set_fact:
-        vni_resource_groups: "{{ rg_response.json['items'] | json_query('[?type==`vni`]') }}"
+        vni_resource_groups: >-
+          {{ rg_response.json['items'] | selectattr('type', 'equalto', 'vni') | list }}
       when: vni_pool_name | length > 0
 
     - name: Debug - print vni_pool_id and all VNI resource groups
@@ -187,7 +188,8 @@
 
     - name: Find all loopback IP resource groups (leaf_loopback_ips)
       ansible.builtin.set_fact:
-        loopback_resource_groups: "{{ rg_response.json['items'] | json_query('[?type==`ip` && contains(name, `leaf_loopback_ips`)]') }}"
+        loopback_resource_groups: >-
+          {{ rg_response.json['items'] | selectattr('type', 'equalto', 'ip') | selectattr('name', 'search', 'leaf_loopback_ips') | list }}
       when: loopback_pool_name | length > 0
 
     - name: Debug - print loopback_pool_id and all matching resource groups
