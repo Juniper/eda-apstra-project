@@ -41,6 +41,10 @@
   ansible.builtin.set_fact:
     loopback_pool_name: "{{ vrf_data.loopbackPoolName | default('') }}"
 
+- name: Debug - print pool names resolved from annotation
+  debug:
+    msg: "vni_pool_name='{{ vni_pool_name }}' loopback_pool_name='{{ loopback_pool_name }}' vrf_data={{ vrf_data }}"
+
 - name: Print vrf_data_with_sztype
   debug:
     msg: "{{ vrf_data_with_sztype }}"
@@ -168,6 +172,16 @@
       when: vni_pool_name | length > 0 and vni_pool_id | length > 0
 
     # ── Loopback IP pool assignment ───────────────────────────────────────
+    - name: Debug - show all IP pools
+      debug:
+        msg: "{{ ansible_facts.apstra_facts.ip_pools | dict2items | map(attribute='value') | map(attribute='display_name') | list }}"
+      when: loopback_pool_name | length > 0
+
+    - name: Debug - show all IP resource groups
+      debug:
+        msg: "{{ rg_response.json['items'] | selectattr('type', 'equalto', 'ip') | map(attribute='name') | list }}"
+      when: loopback_pool_name | length > 0
+
     - name: Find loopback IP pool ID by display_name
       ansible.builtin.set_fact:
         loopback_pool_id: >-
