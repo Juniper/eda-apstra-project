@@ -137,20 +137,9 @@
       register: rg_response
       when: vni_pool_name | length > 0 or loopback_pool_name | length > 0
 
-    - name: Set VNI resource groups dynamically from API response
-      ansible.builtin.set_fact:
-        vni_resource_groups: >-
-          {{ rg_response.json['items'] | selectattr('type', 'equalto', 'vni') | list }}
-      when: vni_pool_name | length > 0
-
-    - name: Debug - print vni_pool_id and all VNI resource groups
-      debug:
-        msg: "vni_pool_name='{{ vni_pool_name }}' vni_pool_id='{{ vni_pool_id | default('') }}' groups={{ vni_resource_groups | map(attribute='name') | list }}"
-      when: vni_pool_name | length > 0
-
-    - name: Assign VNI pool to all VNI resource groups
+    - name: Assign VNI pool to evpn_l3_vnis resource group
       ansible.builtin.uri:
-        url: "{{ lookup('env', 'APSTRA_API_URL') }}/blueprints/{{ register_bp.id.blueprint }}/resource_groups/vni/{{ item.name }}"
+        url: "{{ lookup('env', 'APSTRA_API_URL') }}/blueprints/{{ register_bp.id.blueprint }}/resource_groups/vni/evpn_l3_vnis"
         method: PUT
         headers:
           AuthToken: "{{ auth.token }}"
@@ -161,15 +150,12 @@
             - "{{ vni_pool_id }}"
         validate_certs: false
         status_code: [200, 202, 204]
-      loop: "{{ vni_resource_groups }}"
-      loop_control:
-        label: "{{ item.name }}"
       when: vni_pool_name | length > 0 and vni_pool_id | length > 0
       register: vni_assignment
 
     - name: Print VNI pool assignment result
       debug:
-        msg: "VNI pool '{{ vni_pool_name }}' (id={{ vni_pool_id }}) assigned to all VNI resource groups: {{ vni_resource_groups | map(attribute='name') | list }}"
+        msg: "VNI pool '{{ vni_pool_name }}' (id={{ vni_pool_id }}) assigned to evpn_l3_vnis"
       when: vni_pool_name | length > 0 and vni_pool_id | length > 0
 
     # ── Loopback IP pool assignment ───────────────────────────────────────
