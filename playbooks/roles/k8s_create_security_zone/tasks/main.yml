@@ -150,6 +150,15 @@
         msg: "vni_pool_name='{{ vni_pool_name }}' vni_pool_id='{{ vni_pool_id | default('') }}' groups={{ vni_resource_groups | map(attribute='name') | list }}"
       when: vni_pool_name | length > 0
 
+    - name: Debug - print full VNI resource groups list
+      debug:
+        msg: "VNI resource group {{ idx + 1 }}: name='{{ item.name }}' type='{{ item.type }}' pool_ids={{ item.pool_ids }}"
+      loop: "{{ vni_resource_groups }}"
+      loop_control:
+        index_var: idx
+        label: "{{ item.name }}"
+      when: vni_pool_name | length > 0
+
     - name: Assign VNI pool to all VNI resource groups
       ansible.builtin.uri:
         url: "{{ lookup('env', 'APSTRA_API_URL') }}/blueprints/{{ register_bp.id.blueprint }}/resource_groups/vni/{{ item.name }}"
