@@ -206,7 +206,7 @@
           {{
             rg_response.json['items']
             | selectattr('type', 'equalto', 'ip')
-            | selectattr('name', 'search', 'sz:' ~ sz.id.security_zone ~ ',leaf_loopback_ips')
+            | selectattr('name', 'equalto', 'leaf_loopback_ips')
             | first
             | default({})
           }}
