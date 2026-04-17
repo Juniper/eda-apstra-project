@@ -117,17 +117,28 @@
           }}
       when: vni_pool_name | length > 0
 
-    - name: Debug - show all resource groups for blueprint
+    - name: Get all resource groups from blueprint via raw API
+      ansible.builtin.uri:
+        url: "{{ lookup('env', 'APSTRA_API_URL') }}/blueprints/{{ register_bp.id.blueprint }}/resource_groups"
+        method: GET
+        headers:
+          AuthToken: "{{ auth.token }}"
+        validate_certs: false
+        status_code: 200
+      register: rg_response
+      when: vni_pool_name | length > 0
+
+    - name: Debug - show all VNI resource groups from API
       debug:
-        msg: "{{ ansible_facts.apstra_facts.blueprints[register_bp.id.blueprint].resource_groups | selectattr('resource_type', 'equalto', 'vni') | list }}"
+        msg: "{{ rg_response.json['items'] | selectattr('type', 'equalto', 'vni') | list }}"
       when: vni_pool_name | length > 0
 
     - name: Find VNI resource group name for this security zone
       ansible.builtin.set_fact:
         sz_vni_rg_name: >-
           {{
-            ansible_facts.apstra_facts.blueprints[register_bp.id.blueprint].resource_groups
-            | selectattr('resource_type', 'equalto', 'vni')
+            rg_response.json['items']
+            | selectattr('type', 'equalto', 'vni')
             | selectattr('name', 'search', sz.id.security_zone)
             | map(attribute='name')
             | first
