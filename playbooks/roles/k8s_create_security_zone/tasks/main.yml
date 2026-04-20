@@ -33,6 +33,18 @@
         | combine({'vrf_name': (vrf_data.vrfName if vrf_data.vrfName is defined else vrf_data.label)})
       }}
 
+- name: Set VNI pool name from annotation if defined
+  ansible.builtin.set_fact:
+    vni_pool_name: "{{ vrf_data.vniPoolName | default('') }}"
+
+- name: Set loopback pool name from annotation if defined
+  ansible.builtin.set_fact:
+    loopback_pool_name: "{{ vrf_data.loopbackPoolName | default('') }}"
+
+- name: Debug - print pool names resolved from annotation
+  debug:
+    msg: "vni_pool_name='{{ vni_pool_name }}' loopback_pool_name='{{ loopback_pool_name }}' vrf_data={{ vrf_data }}"
+
 - name: Print vrf_data_with_sztype
   debug:
     msg: "{{ vrf_data_with_sztype }}"
@@ -85,6 +97,136 @@
         auth_token: "{{ auth.token }}"
         tags: "{{ sz_tags if sz_tags is not none else omit }}"
       register: sz
+
+    - name: Gather VNI pools, IP pools and blueprint resource groups from Apstra
+      juniper.apstra.apstra_facts:
+        id: "{{ register_bp.id }}"
+        auth_token: "{{ auth.token }}"
+        gather_network_facts:
+          - blueprints.resource_groups
+          - vni_pools
+          - ip_pools
+      when: vni_pool_name | length > 0 or loopback_pool_name | length > 0
+
+    - name: Debug - show all VNI pools
+      debug:
+        msg: "{{ ansible_facts.apstra_facts.vni_pools | dict2items | map(attribute='value') | map(attribute='display_name') | list }}"
+      when: vni_pool_name | length > 0
+
+    - name: Find VNI pool ID by display_name
+      ansible.builtin.set_fact:
+        vni_pool_id: >-
+          {{
+            ansible_facts.apstra_facts.vni_pools
+            | dict2items
+            | selectattr('value.display_name', 'equalto', vni_pool_name)
+            | map(attribute='key')
+            | first
+            | default('')
+          }}
+      when: vni_pool_name | length > 0
+
+    - name: Get all resource groups from blueprint via raw API
+      ansible.builtin.uri:
+        url: "{{ lookup('env', 'APSTRA_API_URL') }}/blueprints/{{ register_bp.id.blueprint }}/resource_groups"
+        method: GET
+        headers:
+          AuthToken: "{{ auth.token }}"
+        validate_certs: false
+        status_code: 200
+      register: rg_response
+      when: vni_pool_name | length > 0 or loopback_pool_name | length > 0
+
+    - name: Assign VNI pool to evpn_l3_vnis resource group
+      ansible.builtin.uri:
+        url: "{{ lookup('env', 'APSTRA_API_URL') }}/blueprints/{{ register_bp.id.blueprint }}/resource_groups/vni/evpn_l3_vnis"
+        method: PUT
+        headers:
+          AuthToken: "{{ auth.token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          pool_ids:
+            - "{{ vni_pool_id }}"
+        validate_certs: false
+        status_code: [200, 202, 204]
+      when: vni_pool_name | length > 0 and vni_pool_id | length > 0
+      register: vni_assignment
+
+    - name: Print VNI pool assignment result
+      debug:
+        msg: "VNI pool '{{ vni_pool_name }}' (id={{ vni_pool_id }}) assigned to evpn_l3_vnis"
+      when: vni_pool_name | length > 0 and vni_pool_id | length > 0
+
+    # ── Loopback IP pool assignment ───────────────────────────────────────
+    - name: Find loopback IP pool ID by display_name
+      ansible.builtin.set_fact:
+        loopback_pool_id: >-
+          {{
+            ansible_facts.apstra_facts.ip_pools
+            | dict2items
+            | selectattr('value.display_name', 'equalto', loopback_pool_name)
+            | map(attribute='key')
+            | first
+            | default('')
+          }}
+      when: loopback_pool_name | length > 0
+
+    - name: Find all loopback IP resource groups (leaf_loopback_ips)
+      ansible.builtin.set_fact:
+        loopback_resource_groups: >-
+          {{ rg_response.json['items'] | selectattr('type', 'equalto', 'ip') | selectattr('name', 'search', 'leaf_loopback_ips') | list }}
+      when: loopback_pool_name | length > 0
+
+    - name: Debug - print loopback_pool_id and all matching resource groups
+      debug:
+        msg: "loopback_pool_name='{{ loopback_pool_name }}' loopback_pool_id='{{ loopback_pool_id | default('') }}' groups={{ loopback_resource_groups | map(attribute='name') | list }}"
+      when: loopback_pool_name | length > 0
+
+    - name: Assign loopback IP pool to all leaf_loopback_ips resource groups
+      ansible.builtin.uri:
+        url: "{{ lookup('env', 'APSTRA_API_URL') }}/blueprints/{{ register_bp.id.blueprint }}/resource_groups/ip/{{ item.name }}"
+        method: PUT
+        headers:
+          AuthToken: "{{ auth.token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          pool_ids:
+            - "{{ loopback_pool_id }}"
+        validate_certs: false
+        status_code: [200, 202, 204]
+      loop: "{{ loopback_resource_groups }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when: loopback_pool_name | length > 0 and loopback_pool_id | length > 0
+      register: loopback_assignment
+
+    - name: Print loopback pool assignment result
+      debug:
+        msg: "Loopback pool '{{ loopback_pool_name }}' (id={{ loopback_pool_id }}) assigned to all leaf_loopback_ips resource groups: {{ loopback_resource_groups | map(attribute='name') | list }}"
+      when: loopback_pool_name | length > 0 and loopback_pool_id | length > 0
+
+    - name: Assign loopback IP pool to sz-specific leaf_loopback_ips resource group
+      ansible.builtin.uri:
+        url: "{{ lookup('env', 'APSTRA_API_URL') }}/blueprints/{{ register_bp.id.blueprint }}/resource_groups/ip/sz:{{ sz.id.security_zone }},leaf_loopback_ips"
+        method: PUT
+        headers:
+          AuthToken: "{{ auth.token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          pool_ids:
+            - "{{ loopback_pool_id }}"
+        validate_certs: false
+        status_code: [200, 202, 204]
+      when: loopback_pool_name | length > 0 and loopback_pool_id | length > 0
+      register: sz_loopback_assignment
+
+    - name: Print sz-specific loopback pool assignment result
+      debug:
+        msg: "Loopback pool '{{ loopback_pool_name }}' assigned to sz:{{ sz.id.security_zone }},leaf_loopback_ips"
+      when: loopback_pool_name | length > 0 and loopback_pool_id | length > 0
 
     - name: If changes are made, print changed
       debug:
