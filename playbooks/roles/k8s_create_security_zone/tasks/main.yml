@@ -207,6 +207,27 @@
         msg: "Loopback pool '{{ loopback_pool_name }}' (id={{ loopback_pool_id }}) assigned to all leaf_loopback_ips resource groups: {{ loopback_resource_groups | map(attribute='name') | list }}"
       when: loopback_pool_name | length > 0 and loopback_pool_id | length > 0
 
+    - name: Assign loopback IP pool to sz-specific leaf_loopback_ips resource group
+      ansible.builtin.uri:
+        url: "{{ lookup('env', 'APSTRA_API_URL') }}/blueprints/{{ register_bp.id.blueprint }}/resource_groups/ip/sz:{{ sz.id.security_zone }},leaf_loopback_ips"
+        method: PUT
+        headers:
+          AuthToken: "{{ auth.token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          pool_ids:
+            - "{{ loopback_pool_id }}"
+        validate_certs: false
+        status_code: [200, 202, 204]
+      when: loopback_pool_name | length > 0 and loopback_pool_id | length > 0
+      register: sz_loopback_assignment
+
+    - name: Print sz-specific loopback pool assignment result
+      debug:
+        msg: "Loopback pool '{{ loopback_pool_name }}' assigned to sz:{{ sz.id.security_zone }},leaf_loopback_ips"
+      when: loopback_pool_name | length > 0 and loopback_pool_id | length > 0
+
     - name: If changes are made, print changed
       debug:
         msg: "{{ sz.changed }}"
