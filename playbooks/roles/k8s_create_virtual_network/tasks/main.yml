@@ -281,33 +281,6 @@
       debug:
         msg: "VNI pool '{{ vnet_vni_pool_name }}' (id={{ vnet_vni_pool_id }}) assigned to vxlan_vn_ids"
       when: vnet_vni_pool_name | length > 0 and vnet_vni_pool_id | length > 0
-  
-    - name: Get the resource_groups
-      juniper.apstra.apstra_facts:
-        id: "{{ register_bp.id }}"
-        auth_token: "{{ auth.token }}"
-        gather_network_facts:
-          - blueprints.resource_groups
-          - ip_pools
-
-    - name: Extract list of ip_pool ids
-      ansible.builtin.set_fact:
-        ip_pools: "{{ ansible_facts.apstra_facts.ip_pools | json_query('keys(@)') }}"
-
-    - name: Show ip_pool_ids
-      ansible.builtin.debug:
-        var: ip_pools
-
-    - name: Update resource_group
-      juniper.apstra.resource_group:
-        id:
-          blueprint: "{{ register_bp.id.blueprint }}"
-          group_type: "ip"
-          group_name: "sz:{{ sz.security_zone.id }},leaf_loopback_ips"
-        body:
-          description: "Updated description"
-          pool_ids: "{{ ip_pools }}"
-      register: rg_update
 
     - name: Create NS for the configmap
       kubernetes.core.k8s:
