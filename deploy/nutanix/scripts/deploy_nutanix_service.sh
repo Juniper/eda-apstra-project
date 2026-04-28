@@ -46,11 +46,14 @@ print_question() {
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FILES_DIR="$(dirname "$SCRIPT_DIR")/files"
 
-# Default values
-DEFAULT_IMAGE="s-artifactory.juniper.net/atom-docker/nutanix/event-notification-service:v15"
+# Default port/namespace values
 DEFAULT_NUTANIX_PORT="9440"
 DEFAULT_AWX_PORT="80"
 DEFAULT_NAMESPACE="default"
+
+# Apstra version → Juniper Nutanix Plugin version mapping
+#   Apstra 6.0  →  Plugin 6.0.0  →  event-notification-service:6.0.0
+#   Apstra 6.1  →  Plugin 6.1.0  →  event-notification-service:6.1.0
 
 print_header "Nutanix Event Notification Service Deployment"
 
@@ -61,21 +64,89 @@ echo "AWX/Ansible Tower configuration will be automatically detected from the"
 echo "running AWX instance in the 'aap' namespace."
 echo ""
 
+# ── Apstra version selection ──────────────────────────────────────────────────
+print_question "Which Apstra version are you running?"
+echo "  1. Apstra 6.0  →  Juniper Nutanix Plugin 6.0.0"
+echo "  2. Apstra 6.1  →  Juniper Nutanix Plugin 6.1.0"
+echo ""
+read -p "Enter your choice (1 or 2): " APSTRA_VER_CHOICE
+
+case $APSTRA_VER_CHOICE in
+    1)
+        APSTRA_VERSION="6.0"
+        PLUGIN_VERSION="6.0.0"
+        ;;
+    2)
+        APSTRA_VERSION="6.1"
+        PLUGIN_VERSION="6.1.0"
+        ;;
+    *)
+        print_error "Invalid choice. Please run the script again."
+        exit 1
+        ;;
+esac
+
+SELECTED_IMAGE="event-notification-service:${PLUGIN_VERSION}"
+# The image inside the tgz may carry a different name/tag pattern
+# (e.g. apstra-nutanix-event-service:6.1.0-2.0.0-x86_64). The load helpers
+# below search for any apstra-nutanix OR event-notification-service tag and
+# re-tag it to SELECTED_IMAGE so the deployment manifests stay consistent.
+PLUGIN_TGZ="juniper-nutanix-plugin-${PLUGIN_VERSION}.tgz"
+print_status "Apstra version : $APSTRA_VERSION"
+print_status "Plugin image   : $SELECTED_IMAGE"
+echo ""
+
+# ── Deployment method selection ──────────────────────────────────────────────
+print_question "Choose deployment method:"
+echo "  1. Docker Container (Standalone)"
+echo "  2. Kubernetes Pods (Cluster)"
+echo ""
+read -p "Enter your choice (1 or 2): " DEPLOY_METHOD
+
+case $DEPLOY_METHOD in
+    1)
+        DEPLOYMENT_TYPE="docker"
+        print_status "Selected: Docker Container deployment"
+        ;;
+    2)
+        DEPLOYMENT_TYPE="kubernetes"
+        print_status "Selected: Kubernetes Pods deployment"
+        ;;
+    *)
+        print_error "Invalid choice. Please run the script again."
+        exit 1
+        ;;
+esac
+echo ""
+
 # Check prerequisites
 print_status "Checking prerequisites..."
 
-# Check if kubectl is available for AWX password extraction
+# kubectl is always required (for AWX password + K8s deployment)
 if ! command -v kubectl &> /dev/null; then
     print_error "kubectl is not installed or not in PATH"
-    print_error "kubectl is required to extract AWX password from cluster"
     exit 1
 fi
-
-# Check if we can access the cluster
 if ! kubectl cluster-info &> /dev/null; then
     print_error "Cannot connect to Kubernetes cluster"
     print_error "Please ensure kubectl is properly configured"
     exit 1
+fi
+
+# Docker is required only for Docker deployment path
+if [ "$DEPLOYMENT_TYPE" == "docker" ]; then
+    if ! command -v docker &> /dev/null; then
+        print_error "Docker is not installed or not in PATH"
+        print_error "Install with: sudo apt-get install -y docker.io"
+        exit 1
+    fi
+    if ! docker ps &> /dev/null; then
+        print_error "Cannot run Docker commands. Please check Docker daemon and permissions."
+        print_status "If Docker was just installed, add your user to the docker group and re-login:"
+        print_status "  sudo usermod -aG docker \$USER  # then log out and back in"
+        print_status "Or run this script with: sg docker ./deploy_nutanix_service.sh"
+        exit 1
+    fi
 fi
 
 print_success "Prerequisites check passed"
@@ -97,6 +168,97 @@ if [ -z "$AWX_ADMIN_PASSWORD" ]; then
 fi
 
 print_success "AWX admin password extracted successfully"
+
+# ── Image availability check + auto-load ─────────────────────────────────────
+# Helper: prompt for tgz path, validate, return in $PLUGIN_TGZ_PATH
+_prompt_for_plugin_tgz() {
+    echo ""
+    print_status "The Nutanix plugin image needs to be downloaded from the Juniper Support portal:"
+    print_status "  URL  : https://support.juniper.net/support/downloads/?p=apstra"
+    print_status "  Under: 'Juniper Nutanix Plugin'"
+    print_status "  File : juniper-nutanix-plugin-${PLUGIN_VERSION}.tgz  (~63 MB)"
+    echo ""
+    read -p "$(echo -e "${CYAN}[INPUT]${NC} Enter full path to juniper-nutanix-plugin-${PLUGIN_VERSION}.tgz: ")" PLUGIN_TGZ_PATH
+    if [[ -z "$PLUGIN_TGZ_PATH" ]]; then
+        print_error "No path provided."
+        exit 1
+    fi
+    if [[ ! -f "$PLUGIN_TGZ_PATH" ]]; then
+        print_error "File not found: $PLUGIN_TGZ_PATH"
+        exit 1
+    fi
+}
+
+# Helper: load tgz into Docker daemon and (re)tag to SELECTED_IMAGE
+_load_image_docker() {
+    print_status "Loading image into Docker daemon..."
+    if file "$PLUGIN_TGZ_PATH" | grep -qi "gzip\|compressed"; then
+        zcat "$PLUGIN_TGZ_PATH" | docker load
+    else
+        docker load -i "$PLUGIN_TGZ_PATH"
+    fi
+    # Re-tag to the expected name if loaded under a different tag
+    if ! docker image inspect "$SELECTED_IMAGE" &>/dev/null; then
+        local loaded_tag
+        loaded_tag=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep "event-notification-service" | head -1)
+        if [[ -n "$loaded_tag" && "$loaded_tag" != "$SELECTED_IMAGE" ]]; then
+            docker tag "$loaded_tag" "$SELECTED_IMAGE"
+            print_success "Re-tagged $loaded_tag → $SELECTED_IMAGE"
+        fi
+    fi
+}
+
+# Helper: load tgz into containerd k8s.io namespace and (re)tag to SELECTED_IMAGE
+_load_image_containerd() {
+    print_status "Loading image into containerd (k8s.io namespace)..."
+    if file "$PLUGIN_TGZ_PATH" | grep -qi "gzip\|compressed"; then
+        zcat "$PLUGIN_TGZ_PATH" | sudo ctr -n k8s.io images import -
+    else
+        sudo ctr -n k8s.io images import "$PLUGIN_TGZ_PATH"
+    fi
+    # Re-tag to the canonical short name. The tgz may contain either:
+    #   event-notification-service:X.Y.Z
+    #   apstra-nutanix-event-service:X.Y.Z-...
+    if ! sudo ctr -n k8s.io images ls 2>/dev/null | grep -q "^event-notification-service:${PLUGIN_VERSION}"; then
+        local loaded_tag
+        loaded_tag=$(sudo ctr -n k8s.io images ls 2>/dev/null \
+            | grep -E "event-notification-service|apstra-nutanix" \
+            | awk '{print $1}' | head -1)
+        if [[ -n "$loaded_tag" ]]; then
+            sudo ctr -n k8s.io images tag "$loaded_tag" "$SELECTED_IMAGE"
+            print_success "Re-tagged $loaded_tag → $SELECTED_IMAGE"
+        fi
+    fi
+    # Kubelet resolves bare image names to docker.io/library/<name> internally.
+    # Tag with the full docker.io/library prefix so IfNotPresent lookup succeeds.
+    sudo ctr -n k8s.io images tag "$SELECTED_IMAGE" "docker.io/library/${SELECTED_IMAGE}" 2>/dev/null || true
+    print_success "Also tagged as docker.io/library/${SELECTED_IMAGE} (required by kubelet)"
+}
+
+print_status "Checking Nutanix plugin image availability ($SELECTED_IMAGE)..."
+
+if [ "$DEPLOYMENT_TYPE" == "docker" ]; then
+    if ! docker image inspect "$SELECTED_IMAGE" &>/dev/null; then
+        print_warning "Image '$SELECTED_IMAGE' not found in Docker daemon."
+        _prompt_for_plugin_tgz
+        _load_image_docker
+        if ! docker image inspect "$SELECTED_IMAGE" &>/dev/null; then
+            print_error "Image still not found after load. Check the tgz file."
+            exit 1
+        fi
+    fi
+else
+    if ! sudo ctr -n k8s.io images ls 2>/dev/null | grep -q "event-notification-service:${PLUGIN_VERSION}"; then
+        print_warning "Image '$SELECTED_IMAGE' not found in containerd."
+        _prompt_for_plugin_tgz
+        _load_image_containerd
+        if ! sudo ctr -n k8s.io images ls 2>/dev/null | grep -q "event-notification-service:${PLUGIN_VERSION}"; then
+            print_error "Image still not found after load. Check the tgz file."
+            exit 1
+        fi
+    fi
+fi
+print_success "Nutanix plugin image ready: $SELECTED_IMAGE"
 
 # Extract AWX service configuration from cluster
 print_status "Extracting AWX service configuration..."
@@ -129,29 +291,6 @@ AWX_USERNAME="admin"
 
 print_success "AWX configuration auto-detected"
 print_status "AWX accessible at: $AWX_HOST:$AWX_PORT"
-
-# Get deployment method choice
-echo ""
-print_question "Choose deployment method:"
-echo "1. Docker Container (Standalone)"
-echo "2. Kubernetes Pods (Cluster)"
-echo ""
-read -p "Enter your choice (1 or 2): " DEPLOY_METHOD
-
-case $DEPLOY_METHOD in
-    1)
-        DEPLOYMENT_TYPE="docker"
-        print_status "Selected: Docker Container deployment"
-        ;;
-    2)
-        DEPLOYMENT_TYPE="kubernetes"
-        print_status "Selected: Kubernetes Pods deployment"
-        ;;
-    *)
-        print_error "Invalid choice. Please run the script again."
-        exit 1
-        ;;
-esac
 
 echo ""
 print_header "Configuration Input"
@@ -239,21 +378,6 @@ EOF
 
     print_success "Environment file created: $ENV_FILE"
     
-    # Check if Docker is available
-    if ! command -v docker &> /dev/null; then
-        print_error "Docker is not installed or not in PATH"
-        exit 1
-    fi
-    
-    # Check if user can run docker commands
-    if ! docker ps &> /dev/null; then
-        print_error "Cannot run Docker commands. Please check Docker daemon and permissions."
-        print_status "You may need to add your user to the docker group:"
-        print_status "  sudo usermod -aG docker \$USER"
-        print_status "  newgrp docker"
-        exit 1
-    fi
-    
     print_status "Deploying Docker container..."
     
     # Stop existing container if running
@@ -268,7 +392,7 @@ EOF
         --name nutanix-event-service \
         --env-file "$ENV_FILE" \
         --restart unless-stopped \
-        $DEFAULT_IMAGE
+        $SELECTED_IMAGE
     
     if [ $? -eq 0 ]; then
         print_success "Docker container deployed successfully!"
@@ -324,6 +448,8 @@ else
     # Prepare Deployment
     cp "$FILES_DIR/deployment.yaml" "$TEMP_DIR/"
     sed -i "s/namespace: default/namespace: $K8S_NAMESPACE/" "$TEMP_DIR/deployment.yaml"
+    # Patch image tag for selected Apstra version
+    sed -i "s|image: event-notification-service:.*|image: $SELECTED_IMAGE|" "$TEMP_DIR/deployment.yaml"
     
     # Copy Service if exists
     if [ -f "$FILES_DIR/service.yaml" ]; then

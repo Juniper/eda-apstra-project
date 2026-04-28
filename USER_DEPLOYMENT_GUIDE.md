@@ -59,6 +59,11 @@ Before starting the deployment, ensure you have the following components install
 - ✅ **Storage**: Persistent volume support (local-path, NFS, or other)
 - ✅ **Helm**: v3.0+ installed
 - ✅ **Resources**: Minimum 4 CPU cores, 8GB RAM, 50GB storage
+- ✅ **CPU Architecture**: x86-64-v2 or newer — required by AWX's PostgreSQL 15 container.
+  Verify with: `grep -m1 flags /proc/cpuinfo | tr ' ' '\n' | grep -E 'sse4_1|sse4_2|ssse3|popcnt'` — all four must appear.
+  > ⚠️ **QEMU/KVM VMs with CPU model `qemu64` or `QEMU Virtual CPU v2.5+` will fail** at the PostgreSQL
+  > pod start-up with `Fatal glibc error: CPU does not support x86-64-v2`.
+  > Fix in your hypervisor: set CPU model to **`host`** (pass-through) or at minimum **`Skylake-Client`** before deploying.
 
 **Option B: No Kubernetes (We'll install it for you)**
 - ✅ **Linux Server**: Ubuntu 20.04+, CentOS 8+, or RHEL 8+
@@ -66,6 +71,7 @@ Before starting the deployment, ensure you have the following components install
 - ✅ **Root/Sudo Access**: Required for Kubernetes installation
 - ✅ **Python**: 3.10+ (script will install if missing)
 - ✅ **Internet Access**: Required to download Kubernetes components
+- ✅ **CPU Architecture**: x86-64-v2 or newer (same requirement as Option A above)
 
 ### 2. Network Connectivity Requirements
 
@@ -86,7 +92,7 @@ AWX ←→ Apstra Server (port 443)
 - ✅ **Git**: For cloning repositories
 - ✅ **kubectl**: Kubernetes command-line tool (configured)
 - ✅ **Helm**: Package manager for Kubernetes v3.0+
-- ✅ **Docker**: (Optional) If deploying service as Docker container
+- ✅ **Docker**: Required to load the Nutanix plugin image. Install with `sudo apt-get install -y docker.io` then add your user to the docker group: `sudo usermod -aG docker $USER` (re-login required)
 - ✅ **Bash**: Shell environment for running scripts
 
 **For New Kubernetes Installation:**
@@ -107,15 +113,61 @@ Prepare the following credentials:
 
 ---
 
-## Build the Execution Environment (EE)
+## Prepare the Execution Environment (EE) Image
 
-AWX requires an **Execution Environment** (EE) container image that bundles the Ansible collection and the Apstra SDK. The published image
-`apstra-ee:1.0.5` ships `aos-sdk 0.1.0` (Apstra 5.1). To work with **Apstra 6.1**, you must rebuild the image with `aos-sdk 6.1.0` and
-collection `1.0.6`.
+AWX requires an **Execution Environment** (EE) container image that bundles the Ansible collection and the Apstra SDK.
 
-> **Note:** You only need to do this once. After uploading the image to AWX, all job templates will use it automatically.
+> **Note:** You only need to do this once. `configure_awx.sh` automatically detects and loads the image.
 
-### EE Build Prerequisites
+### EE Compatibility Matrix
+
+| EE Image Tag | Collection | aos-sdk | Apstra Server |
+|---|---|---|---|
+| `apstra-ee:1.0.5` | 1.0.5 | 0.1.0 | 5.1.x |
+| `apstra-ee:1.0.6` | 1.0.6 | 6.1.0 | 6.0 / 6.1 |
+
+---
+
+### EE Path A: Download the Pre-Built Image (Recommended)
+
+**This is the standard path for most deployments.** Juniper publishes a pre-built
+`apstra-ee:1.0.6` image on the support portal.
+
+#### EE A.1 — Download the image archive
+
+1. Go to: **https://support.juniper.net/support/downloads/?p=apstra**
+2. Sign in with your Juniper Support account.
+3. Under **"Apstra Ansible Execution Environment"** locate the release matching your Apstra version:
+   - Apstra **6.0 / 6.1** → **Apstra Ansible Execution Environment 1.0.6**
+4. Download the `.tgz` archive (e.g. `apstra-ee-x86_64-1.0.6.image.tgz`, ~200 MB).
+5. Copy it to the Kubernetes node (this server).
+
+#### EE A.2 — Let `configure_awx.sh` load it (automatic)
+
+When you run `configure_awx.sh` in Step 3 below, the script will:
+- Check whether `apstra-ee:1.0.6` is already present in containerd
+- If not, ask you for the path to the `.tgz` file
+- Import it into containerd's `k8s.io` namespace automatically
+- Register it in AWX with `pull: missing` so no internet access is needed
+
+You do **not** need to run any `ctr` or `docker` commands manually.
+
+#### EE A.3 — Verify (optional pre-check)
+
+```bash
+# Confirm the image is visible to Kubernetes after configure_awx.sh loads it:
+sudo ctr -n k8s.io images ls | grep apstra-ee
+# Expected: apstra-ee:1.0.6   ...
+```
+
+---
+
+### EE Path B: Build the Image from Source (Advanced)
+
+Use this path only if you need to customise the image (e.g. add extra Python packages)
+or if the pre-built image is not available from the support portal.
+
+#### EE B Prerequisites
 
 | Requirement | Version |
 |---|---|
@@ -126,140 +178,57 @@ collection `1.0.6`.
 | Red Hat registry account | Required for base image — [register free at](https://access.redhat.com) |
 | Juniper Support account | Required to download the Apstra SDK |
 
----
-
-### EE Step 1: Clone the Apstra Ansible Collection
+#### EE B.1 — Clone the Apstra Ansible Collection
 
 ```bash
 git clone https://github.com/Juniper/apstra-ansible-collection.git
 cd apstra-ansible-collection
 ```
 
----
+#### EE B.2 — Download the Apstra SDK Wheel
 
-### EE Step 2: Download the Apstra SDK Wheel
+The Apstra SDK (`aos_sdk`) is **not** on PyPI — download it from the Juniper Support portal.
 
-The Apstra SDK (`aos_sdk`) is **not** on PyPI and is **not committed to this repository** — it must be downloaded from the Juniper Support portal and placed in `build/wheels/` **before** running any `make` targets.
-
-> ⚠️ **Critical — do this before `make pipenv` or `make image`:**  
-> If `build/wheels/` contains no SDK wheel, `make pipenv` automatically falls back to downloading
-> `aos_sdk-0.1.0` (Apstra 5.1 SDK). That older SDK is **not compatible** with Apstra 6.0 / 6.1
-> and will cause blueprint commit/unlock failures at runtime.
-
-**Steps:**
+> ⚠️ **Critical:** Place the wheel in `build/wheels/` **before** running `make pipenv`.
+> Without it, pip falls back to `aos_sdk-0.1.0` (Apstra 5.1), which is **incompatible** with 6.x.
 
 1. Go to: **https://support.juniper.net/support/downloads/?p=apstra**
 2. Under **"Application Tools"** locate **"Apstra Automation Python3 SDK"**.
-3. Download the `.tar.gz` archive (e.g. `apstra-automation-python3-sdk-6.1.0.tar.gz`).
-4. Extract the wheel file:
+3. Download `apstra-automation-python3-sdk-6.1.0.tar.gz` and extract the wheel:
 
    ```bash
    tar -xzf apstra-automation-python3-sdk-*.tar.gz
    find . -name "aos_sdk-*.whl"
-   ```
-
-5. Create the `build/wheels/` directory and place the wheel there:
-
-   ```bash
    mkdir -p apstra-ansible-collection/build/wheels/
    cp /path/to/aos_sdk-6.1.0-py3-none-any.whl apstra-ansible-collection/build/wheels/
    ```
 
-6. Verify it is in place:
-
-   ```bash
-   ls apstra-ansible-collection/build/wheels/
-   # Expected: aos_sdk-6.1.0-py3-none-any.whl
-   ```
-
-> **Offline / air-gapped:** If your Juniper SE has provided the wheel file directly, skip steps 1–4 and copy it straight to `build/wheels/`.
-
----
-
-### EE Step 3: Set Up the Python Environment
-
-> **Prerequisite:** The `aos_sdk-6.1.0-py3-none-any.whl` must already be in `build/wheels/` (Step 2 above).
-
-The `make pipenv` target detects the highest-versioned `aos_sdk-*.whl` in `build/wheels/`, updates `Pipfile` to reference it, and installs all dependencies:
+#### EE B.3 — Set Up Python Environment and Build
 
 ```bash
 cd apstra-ansible-collection
-make pipenv
+make pipenv    # installs deps, picks up aos_sdk-6.1.0-py3-none-any.whl automatically
+make build     # produces juniper-apstra-1.0.6.tar.gz
 ```
 
-This will:
-- Install `pipenv` and `pre-commit` if missing
-- Pick `aos_sdk-6.1.0-py3-none-any.whl` from `build/wheels/` automatically
-- Update `Pipfile` to reference that wheel
-- Install all Python dependencies
-
-Confirm the correct wheel was selected in the `make pipenv` output:
+Confirm the wheel was picked up:
 ```
 Using aos_sdk wheel: aos_sdk-6.1.0-py3-none-any.whl
 ```
-If you see `aos_sdk-0.1.0` here, the 6.1.0 wheel was not found — go back to Step 2.
 
----
-
-### EE Step 4: Build the Collection Tarball
-
-```bash
-make build
-```
-
-This runs `ansible-galaxy collection build` and produces `juniper-apstra-1.0.6.tar.gz`.
-
----
-
-### EE Step 5: Configure Red Hat Registry Credentials
-
-`ansible-builder` pulls the base image `registry.redhat.io/ansible-automation-platform-25/ee-minimal-rhel8:1.0`.
-Create a `.env` file in the repo root (it is git-ignored):
+#### EE B.4 — Configure Red Hat Registry and Build Image
 
 ```bash
 cat > .env << 'EOF'
 RH_USERNAME=your-redhat-username
 RH_PASSWORD=your-redhat-password
 EOF
+make image     # builds apstra-ee:1.0.6, exports apstra-ee-<platform>-1.0.6.image.tgz
 ```
 
-> **Tip:** If you already have a Red Hat service account token, use the token username/password from
-> **https://access.redhat.com/terms-based-registry/**.
+Build takes ~10–15 minutes. The output `.tgz` can then be used with **EE Path A** above.
 
-Optionally set `REGISTRY_URL` to push directly to Artifactory after the build:
-
-```bash
-echo "REGISTRY_URL=s-artifactory.juniper.net/atom-docker/ee" >> .env
-```
-
----
-
-### EE Step 6: Build the Image
-
-```bash
-# Loads .env automatically via pipenv
-make image
-```
-
-What this does:
-1. Copies `juniper-apstra-1.0.6.tar.gz` → `build/collections/juniper-apstra.tar.gz`
-2. Runs `build/build_image.sh` which calls `ansible-builder build -f build/ee-builder.yml`
-3. The builder:
-   - Pulls the RH base image (requires `RH_USERNAME` / `RH_PASSWORD`)
-   - Installs `aos_sdk-6.1.0` via the wheel copied into the image
-   - Installs the `juniper.apstra 1.0.6` collection
-   - Installs `kubernetes.core` and `community.general` collections
-4. Tags the resulting image `apstra-ee:1.0.6`
-5. Exports it as `apstra-ee-<platform>-1.0.6.image.tgz`
-6. If `REGISTRY_URL` is set — pushes `apstra-ee:1.0.6` to your registry
-
-**Build takes ~10–15 minutes** on first run (base image download + RPM installs).
-
-> **Note for customizers:** The RH base image does not have `pip` on `PATH`. Any custom `RUN` steps in `ee-builder.yml` that install Python packages must use `python3 -m pip install` instead of bare `pip install`.
-
----
-
-### EE Step 7: Verify the Built Image
+#### EE B.5 — Verify the Built Image
 
 ```bash
 docker run --rm apstra-ee:1.0.6 bash -c "
@@ -268,52 +237,13 @@ docker run --rm apstra-ee:1.0.6 bash -c "
 "
 ```
 
-Expected output:
-
+Expected:
 ```
 Name: aos-sdk
 Version: 6.1.0
 ...
-Collection      Version
---------------- -------
 juniper.apstra  1.0.6
 ```
-
----
-
-### EE Step 8: Upload the Image to AWX
-
-#### Option A — Push to a Registry and Configure AWX to Pull It
-
-```bash
-# Tag for your registry (if not done automatically by make image)
-docker tag apstra-ee:1.0.6 s-artifactory.juniper.net/atom-docker/ee/apstra-ee:1.0.6
-
-# Push
-docker push s-artifactory.juniper.net/atom-docker/ee/apstra-ee:1.0.6
-```
-
-In AWX: **Administration → Execution Environments → Add**
-- **Name:** `apstra-ee`
-- **Image:** `s-artifactory.juniper.net/atom-docker/ee/apstra-ee:1.0.6`
-- **Pull:** `Always`
-
-#### Option B — Import the Exported `.tgz` Directly into the Node
-
-```bash
-# Copy the tgz to the Kubernetes node and import
-scp apstra-ee-x86_64-1.0.6.image.tgz user@k8s-node:~
-ssh user@k8s-node "docker load -i ~/apstra-ee-x86_64-1.0.6.image.tgz"
-```
-
----
-
-### EE Compatibility Matrix
-
-| EE Image Tag | Collection | aos-sdk | Apstra Server |
-|---|---|---|---|
-| `apstra-ee:1.0.5` | 1.0.5 | 0.1.0 | 5.1.x |
-| `apstra-ee:1.0.6` | 1.0.6 | 6.1.0 | 6.0 / 6.1 |
 
 ---
 
@@ -493,16 +423,20 @@ chmod +x configure_awx.sh
 
 The script will prompt you for:
 
-1. **Apstra Configuration:**
+1. **Apstra Version** (new — selects the correct Execution Environment image):
+   - `1` → Apstra 6.0  (EE image: `apstra-ee:1.0.6`)
+   - `2` → Apstra 6.1  (EE image: `apstra-ee:1.0.6`)
+
+2. **Apstra Configuration:**
    - Apstra server URL (e.g., `https://10.84.106.91`)
    - Username (admin or your Apstra user)
    - Password
 
-2. **Kubernetes Configuration:**
+3. **Kubernetes Configuration:**
    - Kubernetes API server URL (auto-detected)
    - Cluster configuration (auto-generated)
 
-3. **Project Configuration:**
+4. **Project Configuration:**
    - Repository URL (defaults to this project)
    - Branch (defaults to 'nutanix')
 
@@ -535,11 +469,104 @@ After configuration:
 # - Inventories tab shows "Apstra Inventory"
 ```
 
-### Step 4: Deploy Nutanix Event Notification Service
+### Step 4: Download and Load the Nutanix Plugin Image
+
+Before deploying the Nutanix Event Notification Service you must obtain the official container image from Juniper and make it available to Docker / the Kubernetes node. **The image is not pulled from a public registry — it must be loaded manually.**
+
+#### 4.0 Identify Your Plugin Version
+
+Choose the plugin package that matches your Apstra server version:
+
+| Apstra Version | Plugin Package | Image Tag | ~Size |
+|---|---|---|---|
+| **6.0** | `juniper-nutanix-plugin-6.0.0.tgz` | `event-notification-service:6.0.0` | ~63 MB |
+| **6.1** | `juniper-nutanix-plugin-6.1.0.tgz` | `event-notification-service:6.1.0` | ~63 MB |
+
+All commands below show `<PLUGIN_VERSION>` as a placeholder — substitute `6.0.0` or `6.1.0` according to the table above.
+
+#### 4.1 Download the Plugin Package
+
+1. Open a browser and go to:  
+   **https://support.juniper.net/support/downloads/?p=apstra**
+2. Sign in with your Juniper support account.
+3. Under **"Nutanix"** (or **"Juniper Nutanix Plugin"**), locate the release that matches your Apstra version:
+   - Apstra **6.0** → **Juniper Nutanix Plugin 6.0.0**
+   - Apstra **6.1** → **Juniper Nutanix Plugin 6.1.0** (released 08 Apr 2026, ~63 MB)
+4. Download the `.tgz` archive (e.g. `juniper-nutanix-plugin-6.1.0.tgz`).
+5. Download the associated **Checksums** file and verify integrity:
+
+```bash
+# Replace <PLUGIN_VERSION> with 6.0.0 or 6.1.0
+sha256sum juniper-nutanix-plugin-<PLUGIN_VERSION>.tgz
+# Compare output against the checksum listed on the download page
+```
+
+#### 4.2 Load the Image into Docker
+
+```bash
+# Replace <PLUGIN_VERSION> with your version (6.0.0 or 6.1.0)
+docker load -i juniper-nutanix-plugin-<PLUGIN_VERSION>.tgz
+```
+
+Confirm the image was loaded and note the tag printed by Docker:
+
+```bash
+docker images | grep event-notification-service
+# Expected output:
+# event-notification-service   6.0.0   <image-id>   ...   (for Apstra 6.0)
+# event-notification-service   6.1.0   <image-id>   ...   (for Apstra 6.1)
+```
+
+> **Note:** If the loaded tag differs from `event-notification-service:<PLUGIN_VERSION>`, re-tag it before proceeding:
+> ```bash
+> docker tag <loaded-name>:<loaded-tag> event-notification-service:<PLUGIN_VERSION>
+> ```
+
+#### 4.3 Make the Image Available on the Kubernetes Node (Kubernetes Deployment Only)
+
+Kubernetes uses `containerd` as its container runtime (installed by `k8s_deploy.sh`). You must import the image directly into `containerd`'s `k8s.io` namespace — simply loading it into Docker is **not** sufficient for Kubernetes pods to find it.
+
+**Option A — Import the tgz directly into containerd (recommended):**
+
+```bash
+# Replace <PLUGIN_VERSION> with 6.0.0 or 6.1.0
+sudo ctr -n k8s.io images import juniper-nutanix-plugin-<PLUGIN_VERSION>.tgz
+```
+
+Verify the image is visible to containerd:
+
+```bash
+sudo ctr -n k8s.io images ls | grep event-notification-service
+```
+
+**Option B — Transfer from Docker daemon to containerd:**
+
+```bash
+# Replace <PLUGIN_VERSION> with 6.0.0 or 6.1.0
+docker save event-notification-service:<PLUGIN_VERSION> | sudo ctr -n k8s.io images import -
+```
+
+#### 4.4 Verify the Image is Ready
+
+```bash
+# For Docker deployments — replace <PLUGIN_VERSION> with 6.0.0 or 6.1.0
+docker inspect event-notification-service:<PLUGIN_VERSION> --format '{{.Id}}' | head -c 12
+
+# For Kubernetes deployments — confirm containerd can see it
+sudo crictl images | grep event-notification-service
+# or
+sudo ctr -n k8s.io images ls | grep event-notification-service
+```
+
+Once the image is available, proceed to Step 5.
+
+---
+
+### Step 5: Deploy Nutanix Event Notification Service
 
 Now deploy the service that monitors Nutanix infrastructure and triggers AWX jobs.
 
-#### 4.1 Run Nutanix Service Deployment Script
+#### 5.1 Run Nutanix Service Deployment Script
 
 ```bash
 # Ensure you're in the scripts directory
@@ -548,7 +575,9 @@ chmod +x deploy_nutanix_service.sh
 ./deploy_nutanix_service.sh
 ```
 
-#### 4.2 Deployment Options
+The script will first ask which Apstra version you are running and will select the correct plugin image (`event-notification-service:6.0.0` or `event-notification-service:6.1.0`) automatically for the rest of the deployment.
+
+#### 5.2 Deployment Options
 
 The script will prompt you to choose:
 
@@ -563,7 +592,7 @@ The script will prompt you to choose:
 - Uses environment file for configuration
 - Simpler for development/testing
 
-#### 4.3 Configuration Input
+#### 5.3 Configuration Input
 
 The script will automatically detect AWX configuration and prompt for:
 
@@ -583,7 +612,7 @@ The script will automatically detect AWX configuration and prompt for:
 - Username: admin
 - Password: Extracted from AWX secret
 
-#### 4.4 Monitor Deployment
+#### 5.4 Monitor Deployment
 
 **For Kubernetes Deployment:**
 ```bash
@@ -614,9 +643,9 @@ docker exec nutanix-event-service env | grep NUTANIX
 
 ## Verification and Testing
 
-### Step 5: Verify End-to-End Functionality
+### Step 6: Verify End-to-End Functionality
 
-#### 5.1 Check Service Startup
+#### 6.1 Check Service Startup
 
 Look for these messages in the service logs:
 
@@ -629,7 +658,7 @@ Look for these messages in the service logs:
 🔍 Watching SUBNETS & VMS & VIRTUAL SWITCHES for: CREATION | MODIFICATION | DELETION
 ```
 
-#### 5.2 Test Infrastructure Event Detection
+#### 6.2 Test Infrastructure Event Detection
 
 **Create a test subnet in Nutanix:**
 
@@ -652,14 +681,14 @@ Look for these messages in the service logs:
    Job URL: http://x.x.x.x:xxxxx/#/jobs/X
 ```
 
-#### 5.3 Verify AWX Job Execution
+#### 6.3 Verify AWX Job Execution
 
 1. Login to AWX web interface
 2. Go to Jobs tab
 3. Verify that jobs are being triggered when infrastructure changes occur
 4. Check job output for successful execution
 
-### Step 6: Troubleshooting
+### Step 7: Troubleshooting
 
 #### Kubernetes Installation Issues
 
@@ -709,6 +738,24 @@ kubectl logs -n kube-system <pod-name>
 ```
 
 #### Service-Specific Issues
+
+**0. Nutanix Plugin Image Not Found:**
+```bash
+# deploy_nutanix_service.sh will error with, e.g.:
+# "Image 'event-notification-service:6.1.0' not found in local Docker daemon."
+
+# Fix: download and load the correct image for your Apstra version (see Step 4):
+#   Apstra 6.0 → juniper-nutanix-plugin-6.0.0.tgz
+#   Apstra 6.1 → juniper-nutanix-plugin-6.1.0.tgz
+
+# Load into Docker (replace <PLUGIN_VERSION> with 6.0.0 or 6.1.0):
+docker load -i juniper-nutanix-plugin-<PLUGIN_VERSION>.tgz
+docker images | grep event-notification-service
+
+# For Kubernetes node, also import into containerd:
+sudo ctr -n k8s.io images import juniper-nutanix-plugin-<PLUGIN_VERSION>.tgz
+sudo ctr -n k8s.io images ls | grep event-notification-service
+```
 
 **1. Service Cannot Connect to Nutanix:**
 ```bash

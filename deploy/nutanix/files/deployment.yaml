@@ -20,8 +20,11 @@ spec:
     spec:
       containers:
       - name: event-notification-service
-        image: s-artifactory.juniper.net/atom-docker/nutanix/event-notification-service:v15
-        imagePullPolicy: Always
+        # Image tag is patched at deploy time by deploy_nutanix_service.sh based on Apstra version:
+        #   Apstra 6.0 → event-notification-service:6.0.0
+        #   Apstra 6.1 → event-notification-service:6.1.0
+        image: event-notification-service:PLUGIN_VERSION_TAG
+        imagePullPolicy: IfNotPresent
         # Load all configuration from ConfigMap and Secrets as environment variables
         envFrom:
         - configMapRef:
@@ -43,5 +46,3 @@ spec:
       - name: app-logs
         emptyDir: {}
       restartPolicy: Always
-      imagePullSecrets:
-      - name: artifactory-secret

@@ -6,4 +6,4 @@
 # Common Variables
 organization_name: "Default"
 project_url: "https://github.com/Juniper/eda-apstra-project.git" 
-project_scm_branch: "main"
+project_scm_branch: "nutanix"

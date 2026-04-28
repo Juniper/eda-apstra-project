@@ -12,14 +12,136 @@ REPO_URL="https://github.com/Juniper/eda-apstra-project.git"
 REPO_BRANCH="nutanix"
 WORK_DIR="/tmp/awx-config"
 ROLE_NAME="apstra-ntx-awx-configure"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# EE image tag (same for Apstra 6.0 and 6.1)
+EE_IMAGE_TAG="1.0.6"
+EE_IMAGE_URL=""   # resolved by resolve_ee_image()
 
 echo "=== Complete AWX Configuration Script ==="
 echo "This script will:"
-echo "1. Configure Kubernetes RBAC"
-echo "2. Clone the repository and role"
-echo "3. Prompt for configuration values"
-echo "4. Configure AWX automatically"
+echo "1. Select Apstra version"
+echo "2. Configure Kubernetes RBAC"
+echo "3. Clone the repository and role"
+echo "4. Prompt for configuration values"
+echo "5. Configure AWX automatically"
 echo
+
+# Function to select Apstra version and derive EE image default
+select_apstra_version() {
+    echo
+    echo "=== Apstra Version Selection ==="
+    echo "Select the Apstra version you are running:"
+    echo "  1. Apstra 6.0  →  EE image apstra-ee:1.0.6"
+    echo "  2. Apstra 6.1  →  EE image apstra-ee:1.0.6"
+    echo
+    read -p "Enter your choice (1 or 2): " APSTRA_VER_CHOICE
+
+    case $APSTRA_VER_CHOICE in
+        1)
+            APSTRA_VERSION="6.0"
+            EE_IMAGE_TAG="1.0.6"
+            ;;
+        2)
+            APSTRA_VERSION="6.1"
+            EE_IMAGE_TAG="1.0.6"
+            ;;
+        *)
+            echo "ERROR: Invalid choice. Please run the script again."
+            exit 1
+            ;;
+    esac
+
+    echo "✓ Apstra version : $APSTRA_VERSION"
+    echo "✓ EE image tag   : apstra-ee:${EE_IMAGE_TAG}"
+}
+
+# Function to resolve EE image — check containerd, offer to load from local tgz
+resolve_ee_image() {
+    local desired_tag="apstra-ee:${EE_IMAGE_TAG}"
+
+    echo
+    echo "=== Execution Environment Image ==="
+    echo "Required local image tag: $desired_tag"
+    echo
+
+    # Check if the canonical short tag already exists in containerd k8s.io namespace.
+    # The loaded image may have originally been tagged with a registry prefix
+    # (e.g. s-artifactory.juniper.net/atom-docker/ee/apstra-ee:1.0.6).
+    # We always normalise to the short tag so AWX never needs registry access.
+    local existing
+    existing=$(sudo ctr -n k8s.io images ls 2>/dev/null | grep "apstra-ee" | awk '{print $1}')
+
+    if echo "$existing" | grep -qx "$desired_tag"; then
+        EE_IMAGE_URL="$desired_tag"
+        echo "✓ Image '$desired_tag' already present in containerd — using it."
+        return 0
+    fi
+
+    # Image is present under a different tag (e.g. long registry prefix) — just re-tag it.
+    if [[ -n "$existing" ]]; then
+        local first_tag
+        first_tag=$(echo "$existing" | head -1)
+        echo "Found existing apstra-ee image: $first_tag"
+        echo "Re-tagging to short local name: $desired_tag"
+        sudo ctr -n k8s.io images tag "$first_tag" "$desired_tag"
+        EE_IMAGE_URL="$desired_tag"
+        echo "✓ EE image ready: $EE_IMAGE_URL"
+        return 0
+    fi
+
+    # Not loaded at all — ask user for the .tgz file.
+    echo "Image not found in containerd."
+    echo
+    echo "You need the pre-built EE image .tgz file (Docker save format)."
+    echo "Download it from: https://support.juniper.net/support/downloads/?p=apstra"
+    echo "  → Section: 'Apstra Ansible Execution Environment'"
+    echo "  → File:    apstra-ee-x86_64-${EE_IMAGE_TAG}.image.tgz"
+    echo
+    read -p "Enter full path to the EE image .tgz file: " EE_TGZ_PATH
+
+    if [[ -z "$EE_TGZ_PATH" ]]; then
+        echo "ERROR: No path provided. Cannot continue without the EE image."
+        exit 1
+    fi
+
+    if [[ ! -f "$EE_TGZ_PATH" ]]; then
+        echo "ERROR: File not found: $EE_TGZ_PATH"
+        exit 1
+    fi
+
+    # Docker-save archives are gzip-compressed — ctr import needs a raw tar stream.
+    echo "Loading image into containerd (k8s.io namespace)..."
+    if file "$EE_TGZ_PATH" | grep -qi "gzip\|compressed"; then
+        zcat "$EE_TGZ_PATH" | sudo ctr -n k8s.io images import -
+    else
+        sudo ctr -n k8s.io images import "$EE_TGZ_PATH"
+    fi
+
+    # Detect whatever tag was loaded (may carry a registry prefix such as
+    # s-artifactory.juniper.net/atom-docker/ee/apstra-ee:X.Y.Z)
+    local loaded_tag
+    loaded_tag=$(sudo ctr -n k8s.io images ls 2>/dev/null | grep "apstra-ee" | awk '{print $1}' | head -1)
+
+    if [[ -z "$loaded_tag" ]]; then
+        echo "ERROR: Image load appeared to succeed but no apstra-ee tag found in containerd."
+        echo "Check with: sudo ctr -n k8s.io images ls | grep apstra-ee"
+        exit 1
+    fi
+
+    echo "✓ Loaded tag: $loaded_tag"
+
+    # Always create the short local tag — this is what AWX will reference.
+    # No registry hostname means no external network call, even if pull policy
+    # is not 'missing'.
+    if [[ "$loaded_tag" != "$desired_tag" ]]; then
+        sudo ctr -n k8s.io images tag "$loaded_tag" "$desired_tag"
+        echo "✓ Re-tagged as: $desired_tag  (original registry tag discarded from AWX config)"
+    fi
+
+    EE_IMAGE_URL="$desired_tag"
+    echo "✓ EE image ready: $EE_IMAGE_URL"
+}
 
 # Function to check if kubectl is available
 check_kubectl() {
@@ -120,25 +242,35 @@ EOF
     echo "✓ Service account token secret created/updated"
 }
 
-# Function to clone repository and prepare role
+# Function to prepare role — use local repo if available, otherwise clone from GitHub
 clone_and_prepare_repo() {
-    echo "Cloning repository and preparing role..."
-    
-    # Clean up any existing work directory
-    rm -rf $WORK_DIR
-    mkdir -p $WORK_DIR
-    
-    # Clone the repository
-    git clone -b $REPO_BRANCH $REPO_URL $WORK_DIR/repo
-    echo "✓ Repository cloned to $WORK_DIR/repo"
-    
-    # Check if role exists
-    if [[ ! -d "$WORK_DIR/repo/build/$ROLE_NAME" ]]; then
-        echo "ERROR: Role $ROLE_NAME not found in repository"
-        exit 1
+    echo "Preparing repository and role..."
+
+    # Determine local repo root: this script lives at deploy/nutanix/scripts/configure_awx.sh
+    # so the repo root is three levels up.
+    local LOCAL_REPO
+    LOCAL_REPO="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+
+    if [[ -d "$LOCAL_REPO/build/$ROLE_NAME" ]]; then
+        echo "✓ Using local repository at: $LOCAL_REPO"
+        rm -rf $WORK_DIR
+        mkdir -p $WORK_DIR
+        # Symlink so the rest of the script can reference $WORK_DIR/repo as before
+        ln -s "$LOCAL_REPO" "$WORK_DIR/repo"
+        echo "✓ Role $ROLE_NAME found in local repository"
+    else
+        echo "Local repository not found — cloning from GitHub..."
+        rm -rf $WORK_DIR
+        mkdir -p $WORK_DIR
+        git clone -b $REPO_BRANCH $REPO_URL $WORK_DIR/repo
+        echo "✓ Repository cloned to $WORK_DIR/repo"
+
+        if [[ ! -d "$WORK_DIR/repo/build/$ROLE_NAME" ]]; then
+            echo "ERROR: Role $ROLE_NAME not found in repository"
+            exit 1
+        fi
+        echo "✓ Role $ROLE_NAME found in repository"
     fi
-    
-    echo "✓ Role $ROLE_NAME found in repository"
 }
 
 # Function to extract service account credentials
@@ -187,13 +319,7 @@ prompt_for_configuration() {
     APSTRA_USERNAME=${APSTRA_USERNAME:-admin}
     read -s -p "Apstra Password: " APSTRA_PASSWORD
     echo
-    
-    # Execution Environment
-    echo
-    echo "Execution Environment:"
-    read -p "Execution Environment Image URL [s-artifactory.juniper.net/atom-docker/ee/apstra-ee:1.0.6]: " EE_IMAGE_URL
-    EE_IMAGE_URL=${EE_IMAGE_URL:-s-artifactory.juniper.net/atom-docker/ee/apstra-ee:1.0.6}
-    
+
     echo
     echo "✓ Configuration collected"
 }
@@ -240,7 +366,7 @@ configure_awx() {
     cd $WORK_DIR/repo/build
     
     # Run the playbook
-    if ansible-playbook deploy-awx-playbook.yml -v; then
+    if ansible-playbook deploy-awx-playbook.yml -vv; then
         echo "✓ AWX configuration completed successfully"
     else
         echo "ERROR: AWX configuration failed"
@@ -274,7 +400,9 @@ display_final_summary() {
 # Main execution
 main() {
     echo "Starting complete AWX configuration..."
-    
+
+    select_apstra_version
+    resolve_ee_image
     check_kubectl
     get_awx_details
     create_kubernetes_rbac
